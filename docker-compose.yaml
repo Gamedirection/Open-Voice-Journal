@@ -1,8 +1,111 @@
-﻿version: "3.9"
+﻿name: open-voice-journal
 
 services:
+  api:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run start"
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+      - API_PORT=${API_PORT}
+    ports:
+      - "${API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:8080/api/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 25s
+
+  worker:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run worker"
+    volumes:
+      - ./backend:/app
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=development
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev --http-port=8080
+    environment:
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
+    ports:
+      - "8081:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+
+  minio:
+    image: quay.io/minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
   traefik:
     image: traefik:v3.1
+    profiles: ["prod"]
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
@@ -18,76 +121,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - traefik_letsencrypt:/letsencrypt
-
-  api:
-    image: node:20-alpine
-    working_dir: /app
-    command: sh -c "npm install && npm run start"
-    volumes:
-      - ./backend:/app
-    env_file:
-      - .env
-    labels:
-      - traefik.enable=true
-      - traefik.http.routers.api.rule=Host(`${DOMAIN}`) && PathPrefix(`/api`)
-      - traefik.http.routers.api.entrypoints=websecure
-      - traefik.http.routers.api.tls.certresolver=le
-      - traefik.http.services.api.loadbalancer.server.port=8080
-    depends_on:
-      - postgres
-      - redis
-      - ollama
-
-  worker:
-    image: node:20-alpine
-    working_dir: /app
-    command: sh -c "npm install && npm run worker"
-    volumes:
-      - ./backend:/app
-    env_file:
-      - .env
-    depends_on:
-      - postgres
-      - redis
-      - ollama
-
-  postgres:
-    image: pgvector/pgvector:pg16
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-
-  redis:
-    image: redis:7-alpine
-
-  keycloak:
-    image: quay.io/keycloak/keycloak:26.0
-    command: start-dev
-    environment:
-      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
-      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
-    depends_on:
-      - postgres
-
-  ollama:
-    image: ollama/ollama:latest
-    volumes:
-      - ollama_data:/root/.ollama
-
-  minio:
-    image: quay.io/minio/minio:latest
-    command: server /data --console-address ":9001"
-    environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-    ports:
-      - "9000:9000"
-      - "9001:9001"
-    volumes:
-      - minio_data:/data
 
 volumes:
   postgres_data:

@@ -1,4 +1,4 @@
-﻿import { randomUUID } from "uuid";
+﻿import { randomUUID } from "node:crypto";
 
 const state = { recordings: new Map(), summaries: new Map(), providerConfigs: new Map() };
 
@@ -43,3 +43,4 @@ export function patchProviderConfig(id, payload) {
   state.providerConfigs.set(id, updated);
   return updated;
 }
+
