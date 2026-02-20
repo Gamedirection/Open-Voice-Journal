@@ -1,0 +1,173 @@
+﻿openapi: 3.0.3
+info:
+  title: Open-Voice-Journal API
+  version: 0.1.0
+  description: API contract for recording ingestion, provider configuration, and summaries.
+servers:
+  - url: http://localhost:8080
+paths:
+  /api/health:
+    get:
+      summary: Health check
+      responses:
+        '200':
+          description: API is healthy
+  /api/v1/ai/providers:
+    get:
+      summary: List available providers and configured provider entries
+      responses:
+        '200':
+          description: Provider list
+    post:
+      summary: Create provider configuration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProviderConfigRequest'
+      responses:
+        '201':
+          description: Provider config created
+  /api/v1/ai/providers/{id}:
+    patch:
+      summary: Update provider configuration
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchProviderConfigRequest'
+      responses:
+        '200':
+          description: Provider config updated
+        '404':
+          description: Not found
+  /api/v1/recordings:
+    post:
+      summary: Create recording metadata
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRecordingRequest'
+      responses:
+        '201':
+          description: Recording created
+  /api/v1/recordings/{id}:
+    get:
+      summary: Get recording by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Recording found
+        '404':
+          description: Not found
+  /api/v1/recordings/{id}/transcribe:
+    post:
+      summary: Queue transcription
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job queued
+  /api/v1/recordings/{id}/summaries:
+    post:
+      summary: Generate summary for recording
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSummaryRequest'
+      responses:
+        '201':
+          description: Summary generated
+        '400':
+          description: Bad request
+        '404':
+          description: Recording not found
+  /api/v1/summaries/{id}:
+    get:
+      summary: Get summary by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Summary found
+        '404':
+          description: Not found
+components:
+  schemas:
+    CreateProviderConfigRequest:
+      type: object
+      required: [provider]
+      properties:
+        provider:
+          type: string
+          enum: [ollama_local, ollama_cloud, openai, anthropic, deepseek, custom_openai]
+        endpoint:
+          type: string
+        apiKey:
+          type: string
+        enabled:
+          type: boolean
+    PatchProviderConfigRequest:
+      type: object
+      properties:
+        endpoint:
+          type: string
+        enabled:
+          type: boolean
+        apiKeyRef:
+          type: string
+    CreateRecordingRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        metadata:
+          type: object
+          additionalProperties: true
+    CreateSummaryRequest:
+      type: object
+      required: [provider, model]
+      properties:
+        provider:
+          type: string
+          enum: [ollama_local, ollama_cloud, openai, anthropic, deepseek, custom_openai]
+        model:
+          type: string
+        template:
+          type: string
+        temperature:
+          type: number
+        max_tokens:
+          type: integer
+

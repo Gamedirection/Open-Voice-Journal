@@ -1,0 +1,39 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Open-Voice-Journal Control Surface</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel">
+        <h1>Open-Voice-Journal</h1>
+        <p class="subtitle">Summarization Provider Settings (Prototype)</p>
+
+        <label for="provider">Provider</label>
+        <select id="provider">
+          <option value="ollama_local">Ollama Local</option>
+          <option value="ollama_cloud">Ollama Cloud</option>
+          <option value="openai">OpenAI</option>
+          <option value="anthropic">Anthropic</option>
+          <option value="deepseek">DeepSeek</option>
+          <option value="custom_openai">Custom OpenAI-Compatible</option>
+        </select>
+
+        <label for="model">Model</label>
+        <input id="model" placeholder="qwen2.5:7b-instruct" />
+
+        <label for="endpoint">Endpoint (optional)</label>
+        <input id="endpoint" placeholder="https://api.example.com/v1" />
+
+        <button id="saveBtn">Save Provider Config</button>
+        <pre id="result"></pre>
+      </section>
+    </main>
+
+    <script src="script.js"></script>
+  </body>
+</html>
+
