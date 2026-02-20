@@ -1,5 +1,5 @@
 ﻿import { Router } from "express";
-import { createSummary, getRecording, getSummary } from "../store/inMemoryStore.js";
+import { createSummary, getRecording, getSummary } from "../store/postgresStore.js";
 import { enforceProviderPolicy } from "../policies/modelPolicy.js";
 import { getProvider } from "../providers/providers.js";
 
@@ -8,7 +8,7 @@ export const summaryRouter = Router();
 summaryRouter.post("/recordings/:id/summaries", async (req, res) => {
   try {
     const recordingId = req.params.id;
-    const recording = getRecording(recordingId);
+    const recording = await getRecording(recordingId);
     if (!recording) return res.status(404).json({ error: "recording not found" });
 
     const providerId = req.body?.provider || "ollama_local";
@@ -25,15 +25,26 @@ summaryRouter.post("/recordings/:id/summaries", async (req, res) => {
       max_tokens: req.body?.max_tokens
     });
 
-    const summary = createSummary({ recordingId, provider: providerId, model, template, markdown: result.markdown });
+    const summary = await createSummary({
+      recordingId,
+      provider: providerId,
+      model,
+      template,
+      markdown: result.markdown
+    });
+
     res.status(201).json({ summary, usage: result.usage });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
-summaryRouter.get("/summaries/:id", (req, res) => {
-  const summary = getSummary(req.params.id);
-  if (!summary) return res.status(404).json({ error: "summary not found" });
-  return res.json(summary);
+summaryRouter.get("/summaries/:id", async (req, res) => {
+  try {
+    const summary = await getSummary(req.params.id);
+    if (!summary) return res.status(404).json({ error: "summary not found" });
+    return res.json(summary);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
 });
