@@ -44,17 +44,18 @@ Core product goals:
 
 ### Backend surface
 - `backend/src/app.js` Express API with REST + WebSocket-ready event endpoints.
+- PostgreSQL-backed persistence for recordings, provider configs, and summaries.
 - Async job model for transcription and summarization.
 
 ### Core services (Docker Compose)
-- `traefik`: HTTPS edge with Let's Encrypt.
 - `api`: Node.js REST API.
 - `worker`: background processing.
 - `postgres`: metadata, FTS, pgvector.
+- `redis`: job queue/event backbone.
 - `keycloak`: OIDC auth and RBAC.
 - `ollama`: local model runtime.
 - `minio`: object storage for recordings/exports.
-- `redis`: job queue/event backbone.
+- `traefik`: HTTPS edge with Let's Encrypt (prod profile).
 
 ## AI Provider Strategy
 
@@ -112,12 +113,16 @@ The backend serves OpenAPI docs and Swagger UI for contract-first development:
 
 ## Data Model Additions
 
-Planned schema entities:
+Current bootstrap tables:
+- `recordings`
 - `ai_provider_configs`
+- `summaries`
+
+Planned schema entities:
 - `ai_model_policies`
 - `summary_jobs`
 - `secret_store_refs`
-- `recordings`, `transcript_segments`, `speakers`, `summaries`, `exports`, `audit_logs`
+- `transcript_segments`, `speakers`, `exports`, `audit_logs`
 
 ## Security
 
@@ -127,28 +132,33 @@ Planned schema entities:
 - Encrypted provider secrets at rest.
 - Audit logs for admin policy changes and model usage.
 
-## Local Development
+## Local Development (Windows Docker Desktop)
 
-### Prerequisites
-- Docker + Docker Compose
-- Node.js 20+
+### 1) Configure env
 
-### Start stack
+```bash
+copy .env.example .env
+```
+
+### 2) Start stack
 
 ```bash
 docker compose up -d
 ```
 
-### Run API locally
+### 3) Verify API + docs
+
+- API health: `http://localhost:8080/api/health`
+- OpenAPI JSON: `http://localhost:8080/api/openapi.json`
+- Swagger UI: `http://localhost:8080/api/docs`
+
+### 4) Run smoke test
 
 ```bash
 cd backend
 npm install
-npm run dev
+npm run smoke
 ```
-
-API default:
-- `http://localhost:8080`
 
 ## Roadmap
 
@@ -168,5 +178,3 @@ API default:
 ## License
 
 MIT
-
-
