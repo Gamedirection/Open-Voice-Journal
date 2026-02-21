@@ -15,11 +15,18 @@ services:
 
   api:
     image: ghcr.io/gamedirection/open-voice-journal-api:latest
-    env_file:
-      - server.env
     environment:
       - NODE_ENV=production
       - API_PORT=8080
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - REDIS_URL=${REDIS_URL}
+      - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY}
+      - LOCAL_ONLY_SUMMARIZATION=${LOCAL_ONLY_SUMMARIZATION}
+      - ALLOWED_SUMMARY_PROVIDERS=${ALLOWED_SUMMARY_PROVIDERS}
     ports:
       - "3089:8080"
     volumes:
@@ -36,12 +43,35 @@ services:
       - redis
       - ollama
 
+  swagger:
+    image: swaggerapi/swagger-ui:latest
+    environment:
+      - SWAGGER_JSON_URL=http://api:8080/api/openapi.json
+    ports:
+      - "3091:8080"
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.role == manager
+      restart_policy:
+        condition: on-failure
+    depends_on:
+      - api
+
   worker:
     image: ghcr.io/gamedirection/open-voice-journal-worker:latest
-    env_file:
-      - server.env
     environment:
       - NODE_ENV=production
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_HOST=${POSTGRES_HOST}
+      - POSTGRES_PORT=${POSTGRES_PORT}
+      - REDIS_URL=${REDIS_URL}
+      - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY}
+      - LOCAL_ONLY_SUMMARIZATION=${LOCAL_ONLY_SUMMARIZATION}
+      - ALLOWED_SUMMARY_PROVIDERS=${ALLOWED_SUMMARY_PROVIDERS}
     deploy:
       replicas: 1
       placement:
@@ -56,8 +86,6 @@ services:
 
   postgres:
     image: pgvector/pgvector:pg16
-    env_file:
-      - server.env
     environment:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_USER: ${POSTGRES_USER}
@@ -95,8 +123,6 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     command: start-dev --http-port=8080
-    env_file:
-      - server.env
     environment:
       KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN}
       KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD}
@@ -125,8 +151,6 @@ services:
   minio:
     image: quay.io/minio/minio:latest
     command: server /data --console-address ":9001"
-    env_file:
-      - server.env
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}

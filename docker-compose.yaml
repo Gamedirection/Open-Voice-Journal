@@ -37,6 +37,15 @@ services:
       retries: 8
       start_period: 25s
 
+  swagger:
+    image: swaggerapi/swagger-ui:latest
+    environment:
+      - SWAGGER_JSON_URL=http://api:8080/api/openapi.json
+    ports:
+      - "8090:8080"
+    depends_on:
+      - api
+
   worker:
     image: node:20-alpine
     working_dir: /app

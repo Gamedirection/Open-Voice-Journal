@@ -11,6 +11,13 @@ All notable changes to Open-Voice-Journal will be documented in this file.
 - Added mixed-content WebView setting in `MainActivity` so `https://localhost` WebView can call local HTTP API.
 - Added stable Android signing setup and version bump strategy for update-in-place APK installs.
 
+## v0.1.1 - 2026-02-21
+
+- Added manual audio upload flow to the web test app.
+- Added API base auto-detection for common swarm port layout (`3090` web -> `3089` API).
+- Added Swagger viewer container option in Docker Compose.
+- Updated OpenAPI contract with recording list and upload endpoints.
+
 ## v0.0.0 - 2026-02-20
 
 - Initial project scaffolding.

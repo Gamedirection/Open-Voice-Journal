@@ -82,6 +82,7 @@ Security and governance:
 The backend serves OpenAPI docs and Swagger UI for contract-first development:
 - OpenAPI JSON: `GET /api/openapi.json`
 - Swagger UI: `GET /api/docs`
+ - Standalone Swagger viewer (Docker): `http://localhost:8090` (prod-server uses `:3091`)
 
 ## Initial API Contracts
 
@@ -109,6 +110,9 @@ The backend serves OpenAPI docs and Swagger UI for contract-first development:
 ### Recording baseline
 - `POST /api/v1/recordings`
 - `GET /api/v1/recordings/:id`
+- `GET /api/v1/recordings`
+- `POST /api/v1/recordings/:id/upload`
+- `GET /api/v1/recordings/:id/file`
 - `POST /api/v1/recordings/:id/transcribe`
 
 ## Data Model Additions
@@ -169,6 +173,12 @@ npm run smoke
 5. Web/PWA + Android productization.
 6. iOS + extension in v1.x.
 
+## Major Milestones
+
+- 2026-02-21: Backend contract skeleton, provider config endpoints, and web test surface.
+- 2026-02-21: Android scaffold with update-friendly APK signing and LAN API controls.
+- 2026-02-21: Manual upload flow in web test app plus Swagger viewer container option.
+
 ## Contributing
 
 - Open issues for architecture and contract changes before implementation.
@@ -189,6 +199,7 @@ MIT
   - check API health
   - create a recording
   - queue a transcription job
+  - upload a file from disk (manual upload)
 
 ## Android APK Test (Basic)
 
@@ -196,6 +207,11 @@ MIT
   - `mobile/android/app/build/outputs/apk/debug/app-debug.apk`
 - For emulator, API host fallback is `10.0.2.2:8080`.
 - For a physical phone on LAN, access web UI via `http://<your-pc-ip>:8088` and ensure API is reachable at `<your-pc-ip>:8080`.
+
+## Production Notes
+
+- If the web app and API are exposed on different ports (example: web `:3090`, API `:3089`), set the API URL in the Settings tab to `http://<server-ip>:3089`.
+- HTTPS deployments should expose the API via the same origin (reverse proxy `/api`) to avoid mixed-content blocking.
 
 ## APK Update-Friendly Build
 

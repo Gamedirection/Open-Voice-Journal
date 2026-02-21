@@ -2,6 +2,8 @@ function resolveDefaultApiBase() {
   const hostname = window.location.hostname;
   const protocol = window.location.protocol;
   const isCapacitor = Boolean(window.Capacitor);
+  const override = window.__OVJ_API_BASE || document.querySelector('meta[name="ovj-api-base"]')?.content;
+  if (override) return override;
 
   if (isCapacitor) {
     return "http://192.168.1.85:8080";
@@ -11,10 +13,16 @@ function resolveDefaultApiBase() {
     return "http://10.0.2.2:8080";
   }
 
+  if (protocol === "https:") {
+    return "/api";
+  }
+
   if (!hostname || hostname === "localhost" || hostname === "127.0.0.1") {
     return "http://localhost:8080";
   }
 
+  const port = window.location.port;
+  if (port === "3090") return `http://${hostname}:3089`;
   return `http://${hostname}:8080`;
 }
 
@@ -56,6 +64,10 @@ const recordDownloadBtn = document.getElementById("recordDownload");
 const recordStatusEl = document.getElementById("recordStatus");
 const recordPlaybackEl = document.getElementById("recordPlayback");
 const uploadStatusEl = document.getElementById("uploadStatus");
+const manualTitleEl = document.getElementById("manualTitle");
+const manualFileEl = document.getElementById("manualFile");
+const manualUploadBtn = document.getElementById("manualUpload");
+const manualStatusEl = document.getElementById("manualStatus");
 const micEnableBtn = document.getElementById("micEnable");
 const recordingsListEl = document.getElementById("recordingsList");
 const refreshRecordingsBtn = document.getElementById("refreshRecordings");
@@ -449,6 +461,41 @@ async function uploadRecording(blob, title) {
   }
 }
 
+async function uploadManualFile() {
+  if (!manualStatusEl || !manualFileEl || !manualUploadBtn) return;
+  const file = manualFileEl.files?.[0];
+  if (!file) {
+    manualStatusEl.textContent = "Please choose an audio file first.";
+    return;
+  }
+
+  manualUploadBtn.disabled = true;
+  manualStatusEl.textContent = "Uploading file...";
+
+  try {
+    const title = manualTitleEl?.value?.trim() || file.name.replace(/\.[^/.]+$/, "");
+    const recording = await createRecording(title);
+    const formData = new FormData();
+    formData.append("audio", file, file.name);
+    formData.append("title", title);
+
+    const response = await fetch(`${API_BASE}/api/v1/recordings/${recording.id}/upload`, {
+      method: "POST",
+      body: formData
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "Failed uploading audio");
+
+    manualStatusEl.textContent = `Uploaded: ${recording.id}`;
+    manualFileEl.value = "";
+    loadRecordings();
+  } catch (error) {
+    manualStatusEl.textContent = `Upload failed: ${error.message}`;
+  } finally {
+    manualUploadBtn.disabled = false;
+  }
+}
+
 saveApiBaseBtn.addEventListener("click", () => setApiBase(apiBaseInputEl.value));
 useEmulatorBtn.addEventListener("click", () => setApiBase("http://10.0.2.2:8080"));
 useLocalhostBtn.addEventListener("click", () => setApiBase("http://localhost:8080"));
@@ -495,6 +542,10 @@ if (micEnableBtn) {
 
 if (refreshRecordingsBtn) {
   refreshRecordingsBtn.addEventListener("click", loadRecordings);
+}
+
+if (manualUploadBtn) {
+  manualUploadBtn.addEventListener("click", uploadManualFile);
 }
 
 tabButtons.forEach((btn) => {

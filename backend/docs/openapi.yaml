@@ -1,8 +1,8 @@
 ﻿openapi: 3.0.3
 info:
   title: Open-Voice-Journal API
-  version: 0.1.0
-  description: API contract for recording ingestion, provider configuration, and summaries.
+  version: 0.2.0
+  description: API contract for recording ingestion, uploads, provider configuration, and summaries.
 servers:
   - url: http://localhost:8080
 paths:
@@ -50,6 +50,19 @@ paths:
         '404':
           description: Not found
   /api/v1/recordings:
+    get:
+      summary: List recordings
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        '200':
+          description: Recordings listed
     post:
       summary: Create recording metadata
       requestBody:
@@ -75,6 +88,49 @@ paths:
           description: Recording found
         '404':
           description: Not found
+  /api/v1/recordings/{id}/upload:
+    post:
+      summary: Upload audio for a recording
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                title:
+                  type: string
+      responses:
+        '201':
+          description: Audio uploaded
+        '400':
+          description: Missing audio
+        '404':
+          description: Recording not found
+  /api/v1/recordings/{id}/file:
+    get:
+      summary: Download audio file for a recording
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Audio file
+        '404':
+          description: Audio not found
   /api/v1/recordings/{id}/transcribe:
     post:
       summary: Queue transcription
