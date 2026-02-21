@@ -34,6 +34,22 @@ function mapProviderConfig(row) {
   };
 }
 
+function mapJob(row) {
+  return {
+    id: row.id,
+    type: row.type,
+    recordingId: row.recording_id,
+    status: row.status,
+    payload: row.payload || {},
+    result: row.result || null,
+    error: row.error || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    startedAt: row.started_at,
+    completedAt: row.completed_at
+  };
+}
+
 export async function createRecording(payload) {
   const id = randomUUID();
   const title = payload.title || "Untitled recording";
@@ -60,6 +76,20 @@ export async function getRecording(id) {
       WHERE id = $1
     `,
     [id]
+  );
+
+  return result.rows[0] ? mapRecording(result.rows[0]) : null;
+}
+
+export async function updateRecordingStatus(id, status) {
+  const result = await query(
+    `
+      UPDATE recordings
+      SET status = $2
+      WHERE id = $1
+      RETURNING id, title, status, metadata, created_at
+    `,
+    [id, status]
   );
 
   return result.rows[0] ? mapRecording(result.rows[0]) : null;
@@ -162,4 +192,107 @@ export async function patchProviderConfig(id, payload) {
   );
 
   return mapProviderConfig(result.rows[0]);
+}
+
+export async function createJob(payload) {
+  const id = randomUUID();
+
+  const result = await query(
+    `
+      INSERT INTO jobs (id, type, recording_id, status, payload, result, error)
+      VALUES ($1, $2, $3, $4, $5::jsonb, NULL, NULL)
+      RETURNING id, type, recording_id, status, payload, result, error, created_at, updated_at, started_at, completed_at
+    `,
+    [id, payload.type, payload.recordingId || null, payload.status || "queued", JSON.stringify(payload.payload || {})]
+  );
+
+  return mapJob(result.rows[0]);
+}
+
+export async function getJob(id) {
+  const result = await query(
+    `
+      SELECT id, type, recording_id, status, payload, result, error, created_at, updated_at, started_at, completed_at
+      FROM jobs
+      WHERE id = $1
+    `,
+    [id]
+  );
+
+  return result.rows[0] ? mapJob(result.rows[0]) : null;
+}
+
+export async function listJobs(limit = 50) {
+  const result = await query(
+    `
+      SELECT id, type, recording_id, status, payload, result, error, created_at, updated_at, started_at, completed_at
+      FROM jobs
+      ORDER BY created_at DESC
+      LIMIT $1
+    `,
+    [limit]
+  );
+
+  return result.rows.map(mapJob);
+}
+
+export async function claimNextQueuedJob(types = ["transcription"]) {
+  const result = await query(
+    `
+      WITH candidate AS (
+        SELECT id
+        FROM jobs
+        WHERE status = 'queued'
+          AND type = ANY($1::text[])
+        ORDER BY created_at ASC
+        LIMIT 1
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE jobs j
+      SET status = 'running',
+          started_at = NOW(),
+          updated_at = NOW()
+      FROM candidate
+      WHERE j.id = candidate.id
+      RETURNING j.id, j.type, j.recording_id, j.status, j.payload, j.result, j.error, j.created_at, j.updated_at, j.started_at, j.completed_at
+    `,
+    [types]
+  );
+
+  return result.rows[0] ? mapJob(result.rows[0]) : null;
+}
+
+export async function completeJob(id, resultPayload = {}) {
+  const result = await query(
+    `
+      UPDATE jobs
+      SET status = 'completed',
+          result = $2::jsonb,
+          error = NULL,
+          completed_at = NOW(),
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, type, recording_id, status, payload, result, error, created_at, updated_at, started_at, completed_at
+    `,
+    [id, JSON.stringify(resultPayload)]
+  );
+
+  return result.rows[0] ? mapJob(result.rows[0]) : null;
+}
+
+export async function failJob(id, message) {
+  const result = await query(
+    `
+      UPDATE jobs
+      SET status = 'failed',
+          error = $2,
+          completed_at = NOW(),
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, type, recording_id, status, payload, result, error, created_at, updated_at, started_at, completed_at
+    `,
+    [id, message]
+  );
+
+  return result.rows[0] ? mapJob(result.rows[0]) : null;
 }

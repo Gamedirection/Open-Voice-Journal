@@ -56,6 +56,24 @@ export async function initDb() {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  await query(`
+    CREATE TABLE IF NOT EXISTS jobs (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      recording_id TEXT REFERENCES recordings(id) ON DELETE CASCADE,
+      status TEXT NOT NULL,
+      payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+      result JSONB,
+      error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      started_at TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ
+    );
+  `);
+
+  await query("CREATE INDEX IF NOT EXISTS idx_jobs_status_created_at ON jobs (status, created_at);");
 }
 
 export async function closeDb() {

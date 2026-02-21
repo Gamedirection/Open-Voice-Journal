@@ -8,6 +8,7 @@ import YAML from "yaml";
 import { providerRouter } from "./routes/providers.js";
 import { summaryRouter } from "./routes/summaries.js";
 import { recordingsRouter } from "./routes/recordings.js";
+import { jobsRouter } from "./routes/jobs.js";
 import { checkDbHealth, initDb } from "./store/db.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -37,6 +38,7 @@ app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));
 app.use("/api/v1/ai/providers", providerRouter);
 app.use("/api/v1", summaryRouter);
 app.use("/api/v1", recordingsRouter);
+app.use("/api/v1", jobsRouter);
 
 async function start() {
   await initDb();

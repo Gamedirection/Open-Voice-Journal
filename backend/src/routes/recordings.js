@@ -1,5 +1,5 @@
 ﻿import { Router } from "express";
-import { createRecording, getRecording } from "../store/postgresStore.js";
+import { createRecording, createJob, getRecording } from "../store/postgresStore.js";
 
 export const recordingsRouter = Router();
 
@@ -27,10 +27,21 @@ recordingsRouter.post("/recordings/:id/transcribe", async (req, res) => {
     const recording = await getRecording(req.params.id);
     if (!recording) return res.status(404).json({ error: "recording not found" });
 
-    return res.json({
+    const job = await createJob({
+      type: "transcription",
       recordingId: recording.id,
       status: "queued",
-      message: "Transcription job accepted"
+      payload: {
+        requestedAt: new Date().toISOString(),
+        options: req.body || {}
+      }
+    });
+
+    return res.status(202).json({
+      recordingId: recording.id,
+      status: "queued",
+      message: "Transcription job accepted",
+      job
     });
   } catch (error) {
     return res.status(500).json({ error: error.message });
