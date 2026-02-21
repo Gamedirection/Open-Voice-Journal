@@ -95,6 +95,34 @@ export async function updateRecordingStatus(id, status) {
   return result.rows[0] ? mapRecording(result.rows[0]) : null;
 }
 
+export async function updateRecordingMetadata(id, metadataPatch = {}) {
+  const result = await query(
+    `
+      UPDATE recordings
+      SET metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb
+      WHERE id = $1
+      RETURNING id, title, status, metadata, created_at
+    `,
+    [id, JSON.stringify(metadataPatch)]
+  );
+
+  return result.rows[0] ? mapRecording(result.rows[0]) : null;
+}
+
+export async function listRecordings(limit = 50) {
+  const result = await query(
+    `
+      SELECT id, title, status, metadata, created_at
+      FROM recordings
+      ORDER BY created_at DESC
+      LIMIT $1
+    `,
+    [limit]
+  );
+
+  return result.rows.map(mapRecording);
+}
+
 export async function createSummary(payload) {
   const id = randomUUID();
 

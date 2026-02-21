@@ -9,42 +9,96 @@
   <body>
     <main class="app-shell">
       <header class="hero">
-        <h1>Open-Voice-Journal</h1>
-        <p>Basic test app for web and Android APK validation.</p>
+        <div class="hero-row">
+          <div>
+            <h1>Open-Voice-Journal</h1>
+            <p>Basic test app for web and Android APK validation.</p>
+          </div>
+          <nav class="tab-bar">
+            <button class="tab-button is-active" type="button" data-tab="record">Record</button>
+            <button class="tab-button" type="button" data-tab="recordings">Recordings</button>
+            <button class="tab-button" type="button" data-tab="settings">Settings</button>
+          </nav>
+        </div>
       </header>
 
-      <section class="card-grid">
+      <section id="tab-record" class="tab-panel is-active">
+        <div class="record-panel">
+          <article class="card record-card">
+            <h2>Record</h2>
+            <input id="recordingTitle" placeholder="Enter recording title" value="Phone test memo" />
+            <div class="visualizer">
+              <canvas id="recordVisualizer" width="640" height="120"></canvas>
+            </div>
+            <div class="record-controls">
+              <button id="recordStart" class="record-button" type="button" aria-label="Start recording"></button>
+              <button id="recordStop" class="stop-button" type="button" disabled>Stop</button>
+            </div>
+            <button id="micEnable" class="ghost-button" type="button">Enable Microphone</button>
+            <p id="recordStatus">Ready to record.</p>
+            <audio id="recordPlayback" controls></audio>
+            <div class="button-row">
+              <button id="recordDownload" type="button" disabled>Download Recording</button>
+            </div>
+            <p id="uploadStatus" class="hint">Uploads enabled by default.</p>
+            <p class="hint">Microphone permission required on first use.</p>
+          </article>
+        </div>
+      </section>
+
+      <section id="tab-recordings" class="tab-panel">
         <article class="card">
-          <h2>API Connection</h2>
-          <input id="apiBaseInput" placeholder="http://192.168.1.100:8080" />
-          <button id="saveApiBase">Save API URL</button>
-          <div class="button-row">
-            <button id="useEmulator">Use Emulator 10.0.2.2</button>
-            <button id="useLocalhost">Use Localhost</button>
-            <button id="usePrompt">Set Custom URL</button>
+          <div class="card-header">
+            <h2>All Recordings</h2>
+            <button id="refreshRecordings" type="button">Refresh</button>
           </div>
-          <p id="apiBaseLabel">Using auto API URL.</p>
+          <div id="recordingsList" class="recordings-list">No recordings yet.</div>
         </article>
+      </section>
 
-        <article class="card">
-          <h2>API Status</h2>
-          <p id="apiStatus">Checking...</p>
-          <button id="refreshHealth">Refresh</button>
-        </article>
+      <section id="tab-settings" class="tab-panel">
+        <section class="card-grid">
+          <article class="card">
+            <h2>Appearance</h2>
+            <button id="themeToggle" class="toggle-button" type="button">Dark mode: Off</button>
+          </article>
 
-        <article class="card">
-          <h2>Create Test Recording</h2>
-          <input id="recordingTitle" placeholder="Enter recording title" value="Phone test memo" />
-          <button id="createRecording">Create Recording</button>
-          <p id="recordingResult">No recording created yet.</p>
-        </article>
+          <article class="card">
+            <h2>Recording Upload</h2>
+            <label class="toggle-row">
+              <input id="uploadToggle" type="checkbox" />
+              <span>Upload recordings automatically</span>
+            </label>
+            <p class="hint">Turn this off to keep recordings local only.</p>
+          </article>
 
-        <article class="card">
-          <h2>Queue Transcription</h2>
-          <input id="recordingId" placeholder="Paste recording ID" />
-          <button id="queueTranscription">Queue Job</button>
-          <p id="jobResult">No job queued yet.</p>
-        </article>
+          <article class="card">
+            <h2>API Connection</h2>
+            <input id="apiBaseInput" placeholder="http://192.168.1.100:8080" />
+            <button id="saveApiBase" type="button">Save API URL</button>
+            <div class="button-row">
+              <button id="useEmulator" type="button">Use Emulator 10.0.2.2</button>
+              <button id="useLocalhost" type="button">Use Localhost</button>
+              <button id="usePrompt" type="button">Set Custom URL</button>
+            </div>
+            <p id="apiBaseLabel">Using auto API URL.</p>
+          </article>
+
+          <article class="card">
+            <h2>API Status</h2>
+            <p id="apiStatus">Checking...</p>
+            <button id="refreshHealth" type="button">Refresh</button>
+          </article>
+
+          <article class="card">
+            <h2>API Tools</h2>
+            <input id="recordingId" placeholder="Paste recording ID" />
+            <button id="createRecording" type="button">Create Test Recording</button>
+            <button id="queueTranscription" type="button">Queue Job</button>
+            <p id="recordingResult">No recording created yet.</p>
+            <p id="jobResult">No job queued yet.</p>
+          </article>
+        </section>
       </section>
     </main>
 
