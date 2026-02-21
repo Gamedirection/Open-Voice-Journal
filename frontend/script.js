@@ -99,10 +99,47 @@ async function checkHealth() {
   try {
     const response = await fetch(`${API_BASE}/api/health`);
     const data = await response.json();
+    if (!response.ok) {
+      apiStatusEl.textContent = `API error: ${response.status}`;
+      return false;
+    }
     apiStatusEl.textContent = `${data.status} (db: ${data.db})`;
+    return true;
   } catch (error) {
     apiStatusEl.textContent = `API unreachable: ${error.message}`;
+    return false;
   }
+}
+
+function collectApiCandidates() {
+  const candidates = [API_BASE, resolveDefaultApiBase()];
+  const hostname = window.location.hostname;
+  if (hostname && hostname !== "localhost" && hostname !== "127.0.0.1") {
+    candidates.push(`http://${hostname}:3089`);
+    candidates.push(`http://${hostname}:8080`);
+  }
+  if (window.location.protocol === "https:") {
+    candidates.unshift("/api");
+  }
+
+  return Array.from(new Set(candidates.map((value) => normalizeBaseUrl(String(value || ""))).filter(Boolean)));
+}
+
+async function ensureReachableApiBase() {
+  const candidates = collectApiCandidates();
+  for (const candidate of candidates) {
+    try {
+      const response = await fetch(`${candidate}/api/health`);
+      if (!response.ok) continue;
+      API_BASE = candidate;
+      localStorage.setItem(SAVED_API_KEY, API_BASE);
+      renderApiBase();
+      return true;
+    } catch (_error) {
+      // Keep trying fallback endpoints.
+    }
+  }
+  return false;
 }
 
 async function createRecording(titleOverride) {
@@ -553,6 +590,9 @@ tabButtons.forEach((btn) => {
 });
 
 renderApiBase();
-checkHealth();
-loadRecordings();
-setActiveTab(localStorage.getItem(TAB_KEY) || "record");
+(async () => {
+  await ensureReachableApiBase();
+  await checkHealth();
+  await loadRecordings();
+  setActiveTab(localStorage.getItem(TAB_KEY) || "record");
+})();

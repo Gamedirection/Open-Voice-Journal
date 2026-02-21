@@ -82,7 +82,7 @@ Security and governance:
 The backend serves OpenAPI docs and Swagger UI for contract-first development:
 - OpenAPI JSON: `GET /api/openapi.json`
 - Swagger UI: `GET /api/docs`
- - Standalone Swagger viewer (Docker): `http://localhost:8090` (prod-server uses `:3091`)
+- Standalone Swagger viewer (Docker): `http://localhost:8090` (prod-server uses `:3091`)
 
 ## Initial API Contracts
 
@@ -207,6 +207,23 @@ MIT
   - `mobile/android/app/build/outputs/apk/debug/app-debug.apk`
 - For emulator, API host fallback is `10.0.2.2:8080`.
 - For a physical phone on LAN, access web UI via `http://<your-pc-ip>:8088` and ensure API is reachable at `<your-pc-ip>:8080`.
+
+## Android APK Build (Docker, Temporary Container)
+
+This builds the APK in a one-off Docker container while using your **host Android SDK**.
+
+Prereqs:
+- Docker Desktop
+- Android SDK installed on the host
+- Set `ANDROID_SDK_ROOT` if your SDK is not in `%LOCALAPPDATA%\Android\Sdk`
+
+Run:
+```powershell
+.\scripts\build-apk-docker.ps1
+```
+
+APK output:
+`mobile/android/app/build/outputs/apk/debug/app-debug.apk`
 
 ## Production Notes
 
