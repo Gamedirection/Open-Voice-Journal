@@ -1,5 +1,5 @@
 ﻿import { Router } from "express";
-import { createSummary, getRecording, getSummary } from "../store/postgresStore.js";
+import { createSummary, getRecording, getSummary, listSummariesByRecording } from "../store/store.js";
 import { enforceProviderPolicy } from "../policies/modelPolicy.js";
 import { getProvider } from "../providers/providers.js";
 
@@ -46,5 +46,17 @@ summaryRouter.get("/summaries/:id", async (req, res) => {
     return res.json(summary);
   } catch (error) {
     return res.status(500).json({ error: error.message });
+  }
+});
+
+summaryRouter.get("/recordings/:id/summaries", async (req, res) => {
+  try {
+    const recordingId = req.params.id;
+    const parsed = Number(req.query.limit || 5);
+    const limit = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 20) : 5;
+    const summaries = await listSummariesByRecording(recordingId, limit);
+    res.json({ summaries });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
   }
 });

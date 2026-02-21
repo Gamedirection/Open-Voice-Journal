@@ -13,6 +13,7 @@
           <div>
             <h1>Open-Voice-Journal</h1>
             <p>Basic test app for web and Android APK validation.</p>
+            <p id="projectVersion" class="hint">Version: loading...</p>
           </div>
           <nav class="tab-bar">
             <button class="tab-button is-active" type="button" data-tab="record">Record</button>
@@ -59,7 +60,13 @@
         <article class="card">
           <div class="card-header">
             <h2>All Recordings</h2>
-            <button id="refreshRecordings" type="button">Refresh</button>
+            <div class="recordings-header-actions">
+              <div class="recordings-legend">
+                <span class="badge badge-cloud">&#x2601;&#xFE0F; Cloud</span>
+                <span class="badge badge-local">&#x1F3E0; Local</span>
+              </div>
+              <button id="refreshRecordings" type="button">Refresh</button>
+            </div>
           </div>
           <div id="recordingsList" class="recordings-list">No recordings yet.</div>
         </article>
@@ -82,7 +89,7 @@
           </article>
 
           <article class="card">
-            <h2>API Connection</h2>
+            <h2>API Connections</h2>
             <input id="apiBaseInput" placeholder="http://192.168.1.100:8080" />
             <button id="saveApiBase" type="button">Save API URL</button>
             <div class="button-row">
@@ -91,10 +98,6 @@
               <button id="usePrompt" type="button">Set Custom URL</button>
             </div>
             <p id="apiBaseLabel">Using auto API URL.</p>
-          </article>
-
-          <article class="card">
-            <h2>API Status</h2>
             <p id="apiStatus">Checking...</p>
             <button id="refreshHealth" type="button">Refresh</button>
           </article>
@@ -106,6 +109,27 @@
             <button id="queueTranscription" type="button">Queue Job</button>
             <p id="recordingResult">No recording created yet.</p>
             <p id="jobResult">No job queued yet.</p>
+          </article>
+
+          <article class="card">
+            <h2>Credits</h2>
+            <p>
+              Alex Sierputowski @
+              <a href="https://gamedirection.net" target="_blank" rel="noopener noreferrer">GameDirection.net</a>
+            </p>
+            <p>
+              Contact:
+              <a href="https://join.gamedirection.net" target="_blank" rel="noopener noreferrer">join.gamedirection.net</a>
+            </p>
+          </article>
+
+          <article class="card">
+            <h2>Documentation</h2>
+            <p><a id="docsSwaggerLink" href="#" target="_blank" rel="noopener noreferrer">API Swagger</a></p>
+            <p><a id="docsOpenApiLink" href="#" target="_blank" rel="noopener noreferrer">OpenAPI JSON</a></p>
+            <p><a href="https://github.com/Gamedirection/Open-Voice-Journal/blob/main/README.md" target="_blank" rel="noopener noreferrer">README</a></p>
+            <p><a href="https://github.com/Gamedirection/Open-Voice-Journal" target="_blank" rel="noopener noreferrer">GitHub Repository</a></p>
+            <p id="docsVersion" class="hint">Version: loading...</p>
           </article>
         </section>
       </section>

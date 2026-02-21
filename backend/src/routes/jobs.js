@@ -1,5 +1,5 @@
 ﻿import { Router } from "express";
-import { getJob, listJobs } from "../store/postgresStore.js";
+import { getJob, listJobs } from "../store/store.js";
 
 export const jobsRouter = Router();
 

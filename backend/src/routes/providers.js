@@ -1,6 +1,6 @@
 ﻿import { Router } from "express";
 import { listProviderIds } from "../providers/providers.js";
-import { listProviderConfigs, patchProviderConfig, upsertProviderConfig } from "../store/postgresStore.js";
+import { listProviderConfigs, patchProviderConfig, upsertProviderConfig } from "../store/store.js";
 import { encryptSecret } from "../utils/secrets.js";
 import { redact } from "../utils/redaction.js";
 

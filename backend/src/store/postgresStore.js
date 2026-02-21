@@ -151,6 +151,21 @@ export async function getSummary(id) {
   return result.rows[0] ? mapSummary(result.rows[0]) : null;
 }
 
+export async function listSummariesByRecording(recordingId, limit = 5) {
+  const result = await query(
+    `
+      SELECT id, recording_id, provider, model, template, markdown, created_at
+      FROM summaries
+      WHERE recording_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2
+    `,
+    [recordingId, limit]
+  );
+
+  return result.rows.map(mapSummary);
+}
+
 export async function listProviderConfigs() {
   const result = await query(
     `

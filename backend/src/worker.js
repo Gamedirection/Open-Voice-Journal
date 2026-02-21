@@ -1,11 +1,12 @@
-﻿import {
+import {
   claimNextQueuedJob,
   completeJob,
   failJob,
   getRecording,
+  updateRecordingMetadata,
   updateRecordingStatus
-} from "./store/postgresStore.js";
-import { initDb } from "./store/db.js";
+} from "./store/store.js";
+import { initStore } from "./store/store.js";
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS || 3000);
 
@@ -24,6 +25,13 @@ async function processJob(job) {
   await updateRecordingStatus(recording.id, "processing");
   await new Promise((resolve) => setTimeout(resolve, 1500));
   await updateRecordingStatus(recording.id, "transcribed");
+
+  await updateRecordingMetadata(recording.id, {
+    transcript: {
+      text: `Transcript preview for "${recording.title}".\n\nThis is a simulated transcript generated at ${new Date().toISOString()}.`,
+      updatedAt: new Date().toISOString()
+    }
+  });
 
   await completeJob(job.id, {
     simulated: true,
@@ -46,7 +54,7 @@ async function poll() {
 }
 
 async function start() {
-  await initDb();
+  await initStore();
   console.log(`[worker] started (poll ${POLL_MS}ms)`);
   setInterval(poll, POLL_MS);
 }
@@ -55,3 +63,4 @@ start().catch((error) => {
   console.error("[worker] failed to start", error);
   process.exit(1);
 });
+

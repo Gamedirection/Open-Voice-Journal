@@ -74,6 +74,100 @@ const refreshRecordingsBtn = document.getElementById("refreshRecordings");
 const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
 const tabPanels = Array.from(document.querySelectorAll(".tab-panel"));
 const visualizerCanvas = document.getElementById("recordVisualizer");
+const projectVersionEl = document.getElementById("projectVersion");
+const docsVersionEl = document.getElementById("docsVersion");
+const docsSwaggerLinkEl = document.getElementById("docsSwaggerLink");
+const docsOpenApiLinkEl = document.getElementById("docsOpenApiLink");
+
+const DEFAULT_SUMMARY_PROVIDER = "ollama_local";
+const DEFAULT_SUMMARY_MODEL = "qwen2.5:7b-instruct";
+
+const localRecordings = new Map();
+const summaryCache = new Map();
+const recordingUiState = new Map();
+
+function createLocalRecording({ title, blob, downloadUrl, createdAt }) {
+  const id = `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+  const entry = {
+    id,
+    title,
+    status: "local",
+    createdAt: createdAt || new Date().toISOString(),
+    blob,
+    downloadUrl,
+    uploadStatus: "local"
+  };
+  localRecordings.set(id, entry);
+  return entry;
+}
+
+function markLocalRecording(id, patch) {
+  const current = localRecordings.get(id);
+  if (!current) return;
+  localRecordings.set(id, { ...current, ...patch });
+}
+
+function updateRecordingUiState(id, patch) {
+  const current = recordingUiState.get(id) || {};
+  recordingUiState.set(id, { ...current, ...patch });
+}
+
+function getRecordingUiState(id) {
+  return recordingUiState.get(id) || {};
+}
+
+function formatTimestamp(value) {
+  if (!value) return "Unknown time";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Unknown time";
+  return date.toLocaleString();
+}
+
+function buildLoadingBar(label) {
+  const wrap = document.createElement("div");
+  wrap.className = "loading-wrap";
+  const text = document.createElement("div");
+  text.className = "loading-label";
+  text.textContent = label;
+  const bar = document.createElement("div");
+  bar.className = "loading-bar";
+  wrap.appendChild(text);
+  wrap.appendChild(bar);
+  return wrap;
+}
+
+async function getSummaryPreview(recordingId) {
+  if (summaryCache.has(recordingId)) return summaryCache.get(recordingId);
+
+  const listResponse = await fetch(`${API_BASE}/api/v1/recordings/${recordingId}/summaries?limit=1`);
+  const isJson = listResponse.headers.get("content-type")?.includes("application/json");
+  const listPayload = isJson ? await listResponse.json() : await listResponse.text();
+  if (listResponse.ok && listPayload?.summaries?.length) {
+    const summary = listPayload.summaries[0];
+    summaryCache.set(recordingId, summary.markdown);
+    return summary.markdown;
+  }
+
+  const createResponse = await fetch(`${API_BASE}/api/v1/recordings/${recordingId}/summaries`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      provider: DEFAULT_SUMMARY_PROVIDER,
+      model: DEFAULT_SUMMARY_MODEL,
+      template: "default"
+    })
+  });
+  const createIsJson = createResponse.headers.get("content-type")?.includes("application/json");
+  const createPayload = createIsJson ? await createResponse.json() : await createResponse.text();
+  if (!createResponse.ok) {
+    const message = typeof createPayload === "string" ? createPayload : createPayload.error;
+    throw new Error(message || "Failed generating preview");
+  }
+
+  const markdown = createPayload?.summary?.markdown || "Preview unavailable.";
+  summaryCache.set(recordingId, markdown);
+  return markdown;
+}
 
 function setApiBase(value) {
   const normalized = normalizeBaseUrl(value);
@@ -85,6 +179,7 @@ function setApiBase(value) {
   localStorage.setItem(SAVED_API_KEY, API_BASE);
   renderApiBase();
   checkHealth();
+  loadVersion();
   loadRecordings();
   return true;
 }
@@ -92,22 +187,57 @@ function setApiBase(value) {
 function renderApiBase() {
   apiBaseInputEl.value = API_BASE;
   apiBaseLabelEl.textContent = `Using API: ${API_BASE} | page=${window.location.origin || window.location.protocol}`;
+  if (docsSwaggerLinkEl) docsSwaggerLinkEl.href = `${API_BASE}/api/docs`;
+  if (docsOpenApiLinkEl) docsOpenApiLinkEl.href = `${API_BASE}/api/openapi.json`;
 }
 
 async function checkHealth() {
   apiStatusEl.textContent = "Checking API...";
   try {
     const response = await fetch(`${API_BASE}/api/health`);
-    const data = await response.json();
-    if (!response.ok) {
-      apiStatusEl.textContent = `API error: ${response.status}`;
+    let data = null;
+    try {
+      data = await response.json();
+    } catch (_error) {
+      data = null;
+    }
+    if (!data || !data.status) {
+      apiStatusEl.textContent = response.ok ? "API response missing status." : `API error: ${response.status}`;
       return false;
     }
-    apiStatusEl.textContent = `${data.status} (db: ${data.db})`;
-    return true;
+    const storageLabel = data.storage ? ` | storage: ${data.storage}` : "";
+    const fallbackLabel = data.fallback ? " | fallback: on" : "";
+    apiStatusEl.textContent = `${data.status} (db: ${data.db})${storageLabel}${fallbackLabel}`;
+    return response.ok;
   } catch (error) {
     apiStatusEl.textContent = `API unreachable: ${error.message}`;
     return false;
+  }
+}
+
+async function loadVersion() {
+  const loadingText = "Version: loading...";
+  if (projectVersionEl) projectVersionEl.textContent = loadingText;
+  if (docsVersionEl) docsVersionEl.textContent = loadingText;
+  try {
+    const response = await fetch(`${API_BASE}/api/version`);
+    const isJson = response.headers.get("content-type")?.includes("application/json");
+    const payload = isJson ? await response.json() : await response.text();
+    if (!response.ok) {
+      const message = typeof payload === "string" ? payload : payload.error;
+      throw new Error(message || "Failed loading version");
+    }
+    const data = payload;
+
+    const releaseDate = data.releaseDate ? ` (${data.releaseDate})` : "";
+    const source = data.source ? ` via ${data.source}` : "";
+    const versionLabel = `Version: v${data.version}${releaseDate}${source}`;
+    if (projectVersionEl) projectVersionEl.textContent = versionLabel;
+    if (docsVersionEl) docsVersionEl.textContent = versionLabel;
+  } catch (error) {
+    const message = `Version unavailable: ${error.message}`;
+    if (projectVersionEl) projectVersionEl.textContent = message;
+    if (docsVersionEl) docsVersionEl.textContent = message;
   }
 }
 
@@ -150,8 +280,13 @@ async function createRecording(titleOverride) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: titleOverride || recordingTitleEl.value || "Test memo from app" })
     });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Failed creating recording");
+    const isJson = response.headers.get("content-type")?.includes("application/json");
+    const payload = isJson ? await response.json() : await response.text();
+    if (!response.ok) {
+      const message = typeof payload === "string" ? payload : payload.error;
+      throw new Error(message || "Failed creating recording");
+    }
+    const data = payload;
 
     recordingIdEl.value = data.id;
     recordingResultEl.textContent = `Created: ${data.id}`;
@@ -229,37 +364,251 @@ async function loadRecordings() {
   recordingsListEl.textContent = "Loading recordings...";
   try {
     const response = await fetch(`${API_BASE}/api/v1/recordings?limit=50`);
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Failed loading recordings");
+    const isJson = response.headers.get("content-type")?.includes("application/json");
+    const payload = isJson ? await response.json() : await response.text();
+    if (!response.ok) {
+      const message = typeof payload === "string" ? payload : payload.error;
+      throw new Error(message || `Failed loading recordings (${response.status})`);
+    }
+    const data = payload;
 
-    if (!data.length) {
+    recordingsListEl.innerHTML = "";
+    const localItems = Array.from(localRecordings.values()).sort(
+      (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
+    );
+    const cloudItems = Array.isArray(data) ? data : [];
+    const combined = [...localItems, ...cloudItems];
+
+    if (!combined.length) {
       recordingsListEl.textContent = "No recordings yet.";
       return;
     }
 
-    recordingsListEl.innerHTML = "";
-    data.forEach((recording) => {
+    localItems.forEach((recording) => {
       const item = document.createElement("div");
-      item.className = "recording-item";
+      item.className = "recording-item local";
 
       const title = document.createElement("div");
       title.textContent = recording.title;
 
       const meta = document.createElement("div");
       meta.className = "recording-meta";
-      meta.textContent = `${recording.id} • ${recording.status}`;
+      meta.textContent = `${recording.id} - ${recording.uploadStatus || "local"} - ${formatTimestamp(recording.createdAt)}`;
+
+      const badges = document.createElement("div");
+      badges.className = "recording-actions";
+      const badge = document.createElement("span");
+      badge.className = `badge ${recording.uploadStatus === "uploading" ? "badge-uploading" : "badge-local"}`;
+      badge.textContent = recording.uploadStatus === "uploading" ? "Uploading" : "\uD83C\uDFE0 Local";
+      badges.appendChild(badge);
+
+      const actions = document.createElement("div");
+      actions.className = "recording-actions";
+
+      const downloadBtn = document.createElement("button");
+      downloadBtn.type = "button";
+      downloadBtn.textContent = "Download";
+      downloadBtn.addEventListener("click", () => {
+        if (!recording.downloadUrl) return;
+        markLocalRecording(recording.id, { downloading: true });
+        loadRecordings();
+        const link = document.createElement("a");
+        link.href = recording.downloadUrl;
+        link.download = `${sanitizeFilename(recording.title)}.${getFileExtension(recording.blob?.type || "audio/webm")}`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => {
+          markLocalRecording(recording.id, { downloading: false });
+          loadRecordings();
+        }, 300);
+      });
+      actions.appendChild(downloadBtn);
+
+      const uploadBtn = document.createElement("button");
+      uploadBtn.type = "button";
+      uploadBtn.textContent = "Upload to Cloud";
+      uploadBtn.disabled = recording.uploadStatus === "uploading";
+      uploadBtn.addEventListener("click", () => {
+        if (!recording.blob) return;
+        markLocalRecording(recording.id, { uploadStatus: "uploading" });
+        loadRecordings();
+        uploadRecording(recording.blob, recording.title, recording.id);
+      });
+      actions.appendChild(uploadBtn);
 
       item.appendChild(title);
       item.appendChild(meta);
+      item.appendChild(badges);
+      if (recording.uploadStatus === "uploading") {
+        item.appendChild(buildLoadingBar("Uploading..."));
+      }
+      if (recording.downloading) {
+        item.appendChild(buildLoadingBar("Downloading..."));
+      }
+      item.appendChild(actions);
+      recordingsListEl.appendChild(item);
+    });
+
+    cloudItems.forEach((recording) => {
+      const uiState = getRecordingUiState(recording.id);
+      const item = document.createElement("div");
+      item.className = "recording-item cloud";
+
+      const title = document.createElement("div");
+      title.textContent = recording.title;
+
+      const meta = document.createElement("div");
+      meta.className = "recording-meta";
+      meta.textContent = `${recording.id} - ${recording.status} - ${formatTimestamp(recording.createdAt)}`;
+
+      const badge = document.createElement("span");
+      badge.className = "badge badge-cloud";
+      badge.textContent = "\u2601\uFE0F Cloud";
+
+      const actions = document.createElement("div");
+      actions.className = "recording-actions";
+      actions.appendChild(badge);
+
+      const previewSelect = document.createElement("select");
+      const defaultOption = document.createElement("option");
+      defaultOption.value = "";
+      defaultOption.textContent = "Preview transcript...";
+      previewSelect.appendChild(defaultOption);
+
+      const transcriptOption = document.createElement("option");
+      transcriptOption.value = "transcript";
+      transcriptOption.textContent = "Transcription";
+      previewSelect.appendChild(transcriptOption);
+
+      const summaryOption = document.createElement("option");
+      summaryOption.value = "summary";
+      summaryOption.textContent = "AI Summary";
+      previewSelect.appendChild(summaryOption);
+
+      const hideOption = document.createElement("option");
+      hideOption.value = "none";
+      hideOption.textContent = "Hide preview";
+      previewSelect.appendChild(hideOption);
+
+      actions.appendChild(previewSelect);
 
       if (recording.metadata?.audio?.fileName) {
-        const link = document.createElement("a");
-        link.href = `${API_BASE}/api/v1/recordings/${recording.id}/file`;
-        link.textContent = "Download audio";
-        link.target = "_blank";
-        item.appendChild(link);
+        const downloadBtn = document.createElement("button");
+        downloadBtn.type = "button";
+        downloadBtn.textContent = "Download audio";
+        downloadBtn.addEventListener("click", async () => {
+          updateRecordingUiState(recording.id, { downloading: true });
+          loadRecordings();
+          try {
+            const response = await fetch(`${API_BASE}/api/v1/recordings/${recording.id}/file`);
+            if (!response.ok) throw new Error(`Download failed (${response.status})`);
+            const blob = await response.blob();
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = `${sanitizeFilename(recording.title)}.${getFileExtension(blob.type || "audio/webm")}`;
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            URL.revokeObjectURL(url);
+          } catch (error) {
+            alert(`Download failed: ${error.message}`);
+          } finally {
+            updateRecordingUiState(recording.id, { downloading: false });
+            loadRecordings();
+          }
+        });
+        actions.appendChild(downloadBtn);
       }
 
+      const transcribeBtn = document.createElement("button");
+      transcribeBtn.type = "button";
+      transcribeBtn.textContent = "Transcribe";
+      transcribeBtn.disabled = uiState.transcribing;
+      transcribeBtn.addEventListener("click", async () => {
+        updateRecordingUiState(recording.id, { transcribing: true });
+        loadRecordings();
+        try {
+          const response = await fetch(`${API_BASE}/api/v1/recordings/${recording.id}/transcribe`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}"
+          });
+          const isJson = response.headers.get("content-type")?.includes("application/json");
+          const payload = isJson ? await response.json() : await response.text();
+          if (!response.ok) {
+            const message = typeof payload === "string" ? payload : payload.error;
+            throw new Error(message || `Transcription failed (${response.status})`);
+          }
+          setTimeout(() => {
+            loadRecordings();
+          }, 2200);
+        } catch (error) {
+          alert(`Transcription failed: ${error.message}`);
+        } finally {
+          updateRecordingUiState(recording.id, { transcribing: false });
+          loadRecordings();
+        }
+      });
+      actions.appendChild(transcribeBtn);
+
+      const preview = document.createElement("div");
+      preview.className = "recording-preview";
+      preview.hidden = true;
+      const previewTitle = document.createElement("div");
+      previewTitle.textContent = "Transcript preview";
+      const previewBody = document.createElement("pre");
+      previewBody.textContent = "";
+      preview.appendChild(previewTitle);
+      preview.appendChild(previewBody);
+
+      previewSelect.addEventListener("change", async (event) => {
+        const value = event.target.value;
+        if (!value || value === "none") {
+          preview.hidden = true;
+          return;
+        }
+
+        preview.hidden = false;
+        if (value === "transcript") {
+          previewTitle.textContent = "Transcription preview";
+          if (recording.metadata?.transcript?.text) {
+            previewBody.textContent = recording.metadata.transcript.text;
+          } else {
+            previewBody.textContent = "No transcript available yet. Click Transcribe first.";
+          }
+          return;
+        }
+
+        previewTitle.textContent = "Transcript preview (AI summary)";
+        updateRecordingUiState(recording.id, { summarizing: true });
+        loadRecordings();
+        previewBody.textContent = "Loading preview...";
+        try {
+          const markdown = await getSummaryPreview(recording.id);
+          previewBody.textContent = markdown;
+        } catch (error) {
+          previewBody.textContent = `Preview failed: ${error.message}`;
+        } finally {
+          updateRecordingUiState(recording.id, { summarizing: false });
+          loadRecordings();
+        }
+      });
+
+      item.appendChild(title);
+      item.appendChild(meta);
+      item.appendChild(actions);
+      if (uiState.downloading) {
+        item.appendChild(buildLoadingBar("Downloading..."));
+      }
+      if (uiState.transcribing) {
+        item.appendChild(buildLoadingBar("Transcribing..."));
+      }
+      if (uiState.summarizing) {
+        item.appendChild(buildLoadingBar("Summarizing..."));
+      }
+      item.appendChild(preview);
       recordingsListEl.appendChild(item);
     });
   } catch (error) {
@@ -268,6 +617,7 @@ async function loadRecordings() {
 }
 
 let mediaRecorder = null;
+let activeStream = null;
 let recordedChunks = [];
 let recordingTimer = null;
 let recordingStartedAt = null;
@@ -378,18 +728,20 @@ async function startRecording() {
 
   try {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    activeStream = stream;
     recordedChunks = [];
     setupVisualizer(stream);
 
     const mimeType = pickRecordingMimeType();
-    mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    mediaRecorder = recorder;
 
-    mediaRecorder.addEventListener("dataavailable", (event) => {
+    recorder.addEventListener("dataavailable", (event) => {
       if (event.data && event.data.size > 0) recordedChunks.push(event.data);
     });
 
-    mediaRecorder.addEventListener("stop", () => {
-      const blob = new Blob(recordedChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+    recorder.addEventListener("stop", () => {
+      const blob = new Blob(recordedChunks, { type: recorder.mimeType || "audio/webm" });
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
       downloadUrl = URL.createObjectURL(blob);
       recordPlaybackEl.src = downloadUrl;
@@ -397,6 +749,7 @@ async function startRecording() {
 
       const title = recordingTitleEl?.value?.trim() || "ovj_recording";
       recordDownloadBtn.dataset.filename = `${sanitizeFilename(title)}.${getFileExtension(blob.type)}`;
+      const localEntry = createLocalRecording({ title, blob, downloadUrl });
 
       setRecordingUiState({
         message: "Recording ready.",
@@ -407,11 +760,37 @@ async function startRecording() {
       });
 
       if (uploadEnabled) {
-        uploadRecording(blob, title);
+        markLocalRecording(localEntry.id, { uploadStatus: "uploading" });
+        loadRecordings();
+        uploadRecording(blob, title, localEntry.id);
+      } else {
+        promptLocalDownload("Uploads are disabled. The recording is only on this device.");
+        loadRecordings();
+      }
+
+      mediaRecorder = null;
+      if (activeStream) {
+        activeStream.getTracks().forEach((track) => track.stop());
+        activeStream = null;
       }
     });
 
-    mediaRecorder.start();
+    recorder.addEventListener("error", (event) => {
+      setRecordingUiState({
+        message: `Recording failed: ${event.error?.message || "Recorder error"}`,
+        startDisabled: false,
+        stopDisabled: true,
+        downloadDisabled: true,
+        isRecording: false
+      });
+      mediaRecorder = null;
+      if (activeStream) {
+        activeStream.getTracks().forEach((track) => track.stop());
+        activeStream = null;
+      }
+    });
+
+    recorder.start();
     recordingStartedAt = Date.now();
     recordingTimer = setInterval(updateRecordingTimer, 500);
 
@@ -454,10 +833,16 @@ async function requestMicrophonePermission() {
 }
 
 function stopRecording() {
-  if (!mediaRecorder) return;
-  mediaRecorder.stop();
-  mediaRecorder.stream.getTracks().forEach((track) => track.stop());
-  mediaRecorder = null;
+  const recorder = mediaRecorder;
+  if (!recorder) return;
+  recordStopBtn.disabled = true;
+  try {
+    if (recorder.state !== "inactive") {
+      recorder.stop();
+    }
+  } catch (_error) {
+    // Ignore stop errors.
+  }
   clearInterval(recordingTimer);
   recordingTimer = null;
   recordingStartedAt = null;
@@ -465,6 +850,9 @@ function stopRecording() {
 }
 
 function downloadRecording() {
+  if (!downloadUrl && recordPlaybackEl?.src) {
+    downloadUrl = recordPlaybackEl.src;
+  }
   if (!downloadUrl) return;
   const link = document.createElement("a");
   link.href = downloadUrl;
@@ -474,7 +862,18 @@ function downloadRecording() {
   link.remove();
 }
 
-async function uploadRecording(blob, title) {
+function promptLocalDownload(reason) {
+  if (!downloadUrl) return;
+  const title = recordingTitleEl?.value?.trim() || "Recording";
+  const message = reason
+    ? `${reason}\n\nDownload "${title}" now?`
+    : `Download "${title}" now?`;
+  if (confirm(message)) {
+    downloadRecording();
+  }
+}
+
+async function uploadRecording(blob, title, localId) {
   if (!uploadStatusEl) return;
   uploadStatusEl.textContent = "Uploading recording...";
   try {
@@ -488,13 +887,25 @@ async function uploadRecording(blob, title) {
       method: "POST",
       body: formData
     });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Failed uploading audio");
+    const isJson = response.headers.get("content-type")?.includes("application/json");
+    const payload = isJson ? await response.json() : await response.text();
+    if (!response.ok) {
+      const message = typeof payload === "string" ? payload : payload.error;
+      throw new Error(message || "Failed uploading audio");
+    }
 
     uploadStatusEl.textContent = `Uploaded: ${recording.id}`;
+    if (localId) {
+      markLocalRecording(localId, { uploadStatus: "cloud", cloudId: recording.id });
+    }
     loadRecordings();
   } catch (error) {
     uploadStatusEl.textContent = `Upload failed: ${error.message}`;
+    if (localId) {
+      markLocalRecording(localId, { uploadStatus: "local" });
+      loadRecordings();
+    }
+    promptLocalDownload("Upload failed. The recording is only on this device.");
   }
 }
 
@@ -520,8 +931,12 @@ async function uploadManualFile() {
       method: "POST",
       body: formData
     });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || "Failed uploading audio");
+    const isJson = response.headers.get("content-type")?.includes("application/json");
+    const payload = isJson ? await response.json() : await response.text();
+    if (!response.ok) {
+      const message = typeof payload === "string" ? payload : payload.error;
+      throw new Error(message || "Failed uploading audio");
+    }
 
     manualStatusEl.textContent = `Uploaded: ${recording.id}`;
     manualFileEl.value = "";
@@ -593,6 +1008,12 @@ renderApiBase();
 (async () => {
   await ensureReachableApiBase();
   await checkHealth();
+  await loadVersion();
   await loadRecordings();
   setActiveTab(localStorage.getItem(TAB_KEY) || "record");
 })();
+
+
+
+
+

@@ -9,7 +9,7 @@ import {
   getRecording,
   listRecordings,
   updateRecordingMetadata
-} from "../store/postgresStore.js";
+} from "../store/store.js";
 
 export const recordingsRouter = Router();
 
