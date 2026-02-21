@@ -7,9 +7,7 @@
   --border: #d9ddd2;
 }
 
-* {
-  box-sizing: border-box;
-}
+* { box-sizing: border-box; }
 
 body {
   margin: 0;
@@ -21,25 +19,10 @@ body {
     var(--bg);
 }
 
-.app-shell {
-  min-height: 100vh;
-  padding: 28px;
-}
-
-.hero {
-  max-width: 860px;
-  margin: 0 auto 18px auto;
-}
-
-.hero h1 {
-  margin: 0 0 8px 0;
-  font-size: clamp(1.7rem, 4vw, 2.3rem);
-}
-
-.hero p {
-  margin: 0;
-  color: var(--muted);
-}
+.app-shell { min-height: 100vh; padding: 28px; }
+.hero { max-width: 860px; margin: 0 auto 18px auto; }
+.hero h1 { margin: 0 0 8px 0; font-size: clamp(1.7rem, 4vw, 2.3rem); }
+.hero p { margin: 0; color: var(--muted); }
 
 .card-grid {
   max-width: 860px;
@@ -57,13 +40,9 @@ body {
   box-shadow: 0 10px 24px rgba(19, 35, 26, 0.07);
 }
 
-h2 {
-  margin: 0 0 10px 0;
-  font-size: 1.05rem;
-}
+h2 { margin: 0 0 10px 0; font-size: 1.05rem; }
 
-input,
-button {
+input, button {
   width: 100%;
   border-radius: 9px;
   padding: 10px;
@@ -71,9 +50,7 @@ button {
   margin-top: 8px;
 }
 
-input {
-  border: 1px solid var(--border);
-}
+input { border: 1px solid var(--border); }
 
 button {
   border: none;
@@ -82,6 +59,8 @@ button {
   font-weight: 700;
   cursor: pointer;
 }
+
+.button-row { margin-top: 8px; display: grid; gap: 8px; }
 
 p {
   margin: 10px 0 0 0;

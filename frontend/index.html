@@ -15,6 +15,18 @@
 
       <section class="card-grid">
         <article class="card">
+          <h2>API Connection</h2>
+          <input id="apiBaseInput" placeholder="http://192.168.1.100:8080" />
+          <button id="saveApiBase">Save API URL</button>
+          <div class="button-row">
+            <button id="useEmulator">Use Emulator 10.0.2.2</button>
+            <button id="useLocalhost">Use Localhost</button>
+            <button id="usePrompt">Set Custom URL</button>
+          </div>
+          <p id="apiBaseLabel">Using auto API URL.</p>
+        </article>
+
+        <article class="card">
           <h2>API Status</h2>
           <p id="apiStatus">Checking...</p>
           <button id="refreshHealth">Refresh</button>
