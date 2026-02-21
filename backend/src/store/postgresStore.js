@@ -123,6 +123,19 @@ export async function listRecordings(limit = 50) {
   return result.rows.map(mapRecording);
 }
 
+export async function deleteRecording(id) {
+  const result = await query(
+    `
+      DELETE FROM recordings
+      WHERE id = $1
+      RETURNING id, title, status, metadata, created_at
+    `,
+    [id]
+  );
+
+  return result.rows[0] ? mapRecording(result.rows[0]) : null;
+}
+
 export async function createSummary(payload) {
   const id = randomUUID();
 

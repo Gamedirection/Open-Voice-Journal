@@ -89,6 +89,29 @@
           </article>
 
           <article class="card">
+            <h2>Automation & AI</h2>
+            <label class="toggle-row">
+              <input id="autoTranscribeToggle" type="checkbox" />
+              <span>Auto transcribe after upload</span>
+            </label>
+            <label class="toggle-row">
+              <input id="autoSummarizeToggle" type="checkbox" />
+              <span>Auto summarize after transcription</span>
+            </label>
+            <input id="summaryProvider" placeholder="Summary provider (default: ollama_local)" />
+            <input id="summaryModel" placeholder="Summary model (default: qwen2.5:7b-instruct)" />
+            <input id="summaryApiKey" type="password" placeholder="Summary API key (optional)" />
+            <textarea id="summaryPrompt" rows="6" placeholder="Summary prompt template"></textarea>
+            <p class="hint">Default summary prompt:</p>
+            <pre id="summaryPromptDefault" class="hint prompt-default"></pre>
+            <div class="button-row">
+              <button id="saveAiSettings" type="button">Save AI Settings</button>
+              <button id="resetAiSettings" type="button">Restore Defaults</button>
+            </div>
+            <p id="aiSettingsStatus" class="hint">Default provider: local Ollama.</p>
+          </article>
+
+          <article class="card">
             <h2>API Connections</h2>
             <input id="apiBaseInput" placeholder="http://192.168.1.100:8080" />
             <button id="saveApiBase" type="button">Save API URL</button>
@@ -109,6 +132,13 @@
             <button id="queueTranscription" type="button">Queue Job</button>
             <p id="recordingResult">No recording created yet.</p>
             <p id="jobResult">No job queued yet.</p>
+          </article>
+
+          <article class="card">
+            <h2>Server Backup</h2>
+            <button id="createBackup" type="button">Backup Server Now</button>
+            <p id="backupStatus" class="hint">Create a backup before deleting or restoring data.</p>
+            <div id="backupList" class="recordings-list">No backups yet.</div>
           </article>
 
           <article class="card">

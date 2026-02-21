@@ -9,6 +9,7 @@ import { providerRouter } from "./routes/providers.js";
 import { summaryRouter } from "./routes/summaries.js";
 import { recordingsRouter } from "./routes/recordings.js";
 import { jobsRouter } from "./routes/jobs.js";
+import { backupsRouter } from "./routes/backups.js";
 import { checkStoreHealth, getActiveBackend, initStore } from "./store/store.js";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -106,6 +107,7 @@ app.use("/api/v1/ai/providers", providerRouter);
 app.use("/api/v1", summaryRouter);
 app.use("/api/v1", recordingsRouter);
 app.use("/api/v1", jobsRouter);
+app.use("/api/v1", backupsRouter);
 
 async function start() {
   await initStore();

@@ -88,6 +88,19 @@ paths:
           description: Recording found
         '404':
           description: Not found
+    delete:
+      summary: Delete recording and associated resources
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Recording deleted
+        '404':
+          description: Not found
   /api/v1/recordings/{id}/upload:
     post:
       summary: Upload audio for a recording
@@ -207,6 +220,68 @@ paths:
           description: Job found
         '404':
           description: Not found
+  /api/v1/backups:
+    get:
+      summary: List server backups
+      responses:
+        '200':
+          description: Backups listed
+    post:
+      summary: Create server backup
+      responses:
+        '201':
+          description: Backup created
+  /api/v1/backups/{name}/download:
+    get:
+      summary: Download backup file
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Backup file
+        '404':
+          description: Backup not found
+  /api/v1/backups/{name}:
+    delete:
+      summary: Delete backup file
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Backup deleted
+        '404':
+          description: Backup not found
+  /api/v1/backups/{name}/restore:
+    post:
+      summary: Restore recordings from backup file
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                replaceExisting:
+                  type: boolean
+      responses:
+        '200':
+          description: Backup restored
+        '404':
+          description: Backup not found
 components:
   schemas:
     CreateProviderConfigRequest:
@@ -250,6 +325,10 @@ components:
           type: string
         template:
           type: string
+          description: Prompt/instruction template used to shape markdown output.
+        apiKey:
+          type: string
+          description: Optional per-request provider API key.
         temperature:
           type: number
         max_tokens:

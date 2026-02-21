@@ -111,9 +111,17 @@ The backend serves OpenAPI docs and Swagger UI for contract-first development:
 - `POST /api/v1/recordings`
 - `GET /api/v1/recordings/:id`
 - `GET /api/v1/recordings`
+- `DELETE /api/v1/recordings/:id`
 - `POST /api/v1/recordings/:id/upload`
 - `GET /api/v1/recordings/:id/file`
 - `POST /api/v1/recordings/:id/transcribe`
+
+### Backups
+- `GET /api/v1/backups`
+- `POST /api/v1/backups`
+- `GET /api/v1/backups/:name/download`
+- `DELETE /api/v1/backups/:name`
+- `POST /api/v1/backups/:name/restore`
 
 ## Data Model Additions
 
@@ -143,6 +151,13 @@ Planned schema entities:
 ```bash
 copy .env.example .env
 ```
+
+Set transcription provider values in `.env` (required for real transcripts):
+- `TRANSCRIPTION_API_BASE_URL` (example: `https://api.openai.com`)
+- `TRANSCRIPTION_ENDPOINT_PATH` (default: `/v1/audio/transcriptions`)
+- `TRANSCRIPTION_MODEL` (default: `whisper-1`)
+- `TRANSCRIPTION_API_KEY` (API key for your transcription provider)
+- Optional: `TRANSCRIPTION_LANGUAGE`, `TRANSCRIPTION_TIMEOUT_MS`
 
 ### 2) Start stack
 
@@ -200,6 +215,11 @@ MIT
   - create a recording
   - queue a transcription job
   - upload a file from disk (manual upload)
+  - auto-transcribe/auto-summarize uploaded recordings (configurable in Settings)
+  - preview transcript and markdown-rendered AI summary
+  - export transcript/summary as `.md` or copy to clipboard
+  - delete local/cloud recordings with confirmation warnings
+  - create/download/restore/delete server backups
 
 ## Android APK Test (Basic)
 

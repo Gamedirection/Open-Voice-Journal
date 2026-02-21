@@ -2,6 +2,17 @@
 
 All notable changes to Open-Voice-Journal will be documented in this file.
 
+## v0.1.2 - 2026-02-21
+
+- Added cloud and local recording deletion actions with confirmation warnings.
+- Added server backup management in Settings: create, download, restore, and delete backups.
+- Added local Whisper-backed transcription configuration and processing support.
+- Added recording automation toggles: auto-transcribe after upload and auto-summarize after transcription.
+- Added per-recording queued processing state with improved loading bars.
+- Added transcript export/copy tools and AI summary export/copy tools.
+- Added markdown-rendered AI summary preview and persistent summary section under recordings.
+- Added editable summary prompt in Settings with save and restore-defaults controls.
+
 ## v0.1.0 - 2026-02-21
 
 - Added basic web test surface at `http://localhost:8088` for API health and job flow testing.

@@ -6,6 +6,7 @@ import multer from "multer";
 import {
   createRecording,
   createJob,
+  deleteRecording,
   getRecording,
   listRecordings,
   updateRecordingMetadata
@@ -69,6 +70,26 @@ recordingsRouter.get("/recordings/:id", async (req, res) => {
     const recording = await getRecording(req.params.id);
     if (!recording) return res.status(404).json({ error: "recording not found" });
     return res.json(recording);
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+recordingsRouter.delete("/recordings/:id", async (req, res) => {
+  try {
+    const recording = await getRecording(req.params.id);
+    if (!recording) return res.status(404).json({ error: "recording not found" });
+
+    const fileName = recording.metadata?.audio?.fileName;
+    if (fileName) {
+      const filePath = path.resolve(uploadsDir, fileName);
+      if (filePath.startsWith(uploadsDir) && fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    }
+
+    await deleteRecording(recording.id);
+    return res.json({ deleted: true, recordingId: recording.id });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }

@@ -22,10 +22,40 @@ export class OpenAICompatibleProvider extends SummaryProvider {
       throw new Error("Transcript content is required");
     }
 
+    const lines = transcript
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const preview = lines.slice(0, 6);
+
+    const keyTopics = preview.slice(0, 3).map((line) => `- ${line.slice(0, 120)}`);
+    const actionItems = preview.slice(3, 6).map((line) => `- ${line.slice(0, 120)}`);
+    const safeTopics = keyTopics.length ? keyTopics.join("\n") : "- No clear topics extracted.";
+    const safeActions = actionItems.length ? actionItems.join("\n") : "- No explicit action items identified.";
+
     return {
       provider: this.providerId,
       model: options.model,
-      markdown: `## Summary (${this.providerId})\n\nTemplate: ${options.template || "default"}\n\n${transcript.slice(0, 220)}...`,
+      markdown: [
+        "## General Description",
+        "",
+        transcript.slice(0, 380),
+        "",
+        "## Key Topics",
+        "",
+        safeTopics,
+        "",
+        "## Action Items",
+        "",
+        safeActions,
+        "",
+        "## Follow-Up",
+        "",
+        "- Confirm decisions and owners.",
+        "- Schedule follow-up for unresolved items.",
+        "",
+        `Template: ${options.template || "default"}`
+      ].join("\n"),
       usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 }
     };
   }

@@ -7,6 +7,7 @@ import {
   updateRecordingStatus
 } from "./store/store.js";
 import { initStore } from "./store/store.js";
+import { transcribeRecording } from "./services/transcription.js";
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS || 3000);
 
@@ -16,6 +17,7 @@ async function processJob(job) {
     return;
   }
 
+  const now = new Date().toISOString();
   const recording = await getRecording(job.recordingId);
   if (!recording) {
     await failJob(job.id, `recording '${job.recordingId}' not found`);
@@ -23,21 +25,40 @@ async function processJob(job) {
   }
 
   await updateRecordingStatus(recording.id, "processing");
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-  await updateRecordingStatus(recording.id, "transcribed");
-
   await updateRecordingMetadata(recording.id, {
-    transcript: {
-      text: `Transcript preview for "${recording.title}".\n\nThis is a simulated transcript generated at ${new Date().toISOString()}.`,
-      updatedAt: new Date().toISOString()
-    }
+    transcript: null,
+    transcriptionError: null
   });
 
-  await completeJob(job.id, {
-    simulated: true,
-    transcriptionStatus: "transcribed",
-    completedAt: new Date().toISOString()
-  });
+  try {
+    const transcript = await transcribeRecording(recording);
+    await updateRecordingStatus(recording.id, "transcribed");
+    await updateRecordingMetadata(recording.id, {
+      transcript: {
+        text: transcript.text,
+        model: transcript.model,
+        endpoint: transcript.endpoint,
+        updatedAt: new Date().toISOString()
+      },
+      transcriptionError: null
+    });
+
+    await completeJob(job.id, {
+      simulated: false,
+      transcriptionStatus: "transcribed",
+      completedAt: new Date().toISOString()
+    });
+  } catch (error) {
+    const message = error?.message || String(error);
+    await updateRecordingStatus(recording.id, "failed");
+    await updateRecordingMetadata(recording.id, {
+      transcriptionError: {
+        message,
+        failedAt: now
+      }
+    });
+    await failJob(job.id, message);
+  }
 }
 
 async function poll() {

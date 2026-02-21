@@ -4,4 +4,5 @@
 dist/
 coverage/
 backend/uploads/
+backend/backups/
 server.env

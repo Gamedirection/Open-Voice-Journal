@@ -52,6 +52,26 @@ export function listRecordings(limit = 50) {
     .slice(0, Math.max(1, Number(limit) || 50));
 }
 
+export function deleteRecording(id) {
+  const existing = state.recordings.get(id);
+  if (!existing) return null;
+  state.recordings.delete(id);
+
+  for (const [summaryId, summary] of state.summaries.entries()) {
+    if (summary.recordingId === id) {
+      state.summaries.delete(summaryId);
+    }
+  }
+
+  for (const [jobId, job] of state.jobs.entries()) {
+    if (job.recordingId === id) {
+      state.jobs.delete(jobId);
+    }
+  }
+
+  return existing;
+}
+
 export function createSummary(payload) {
   const now = new Date().toISOString();
   const summary = {

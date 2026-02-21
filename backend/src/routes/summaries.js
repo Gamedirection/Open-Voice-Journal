@@ -5,6 +5,13 @@ import { getProvider } from "../providers/providers.js";
 
 export const summaryRouter = Router();
 
+const DEFAULT_SUMMARY_TEMPLATE = [
+  "Provide a general description of the conversation.",
+  "Then highlight key topics discussed.",
+  "Then list action items and follow-up items.",
+  "Return clean Markdown with sections and concise bullets."
+].join(" ");
+
 summaryRouter.post("/recordings/:id/summaries", async (req, res) => {
   try {
     const recordingId = req.params.id;
@@ -13,14 +20,16 @@ summaryRouter.post("/recordings/:id/summaries", async (req, res) => {
 
     const providerId = req.body?.provider || "ollama_local";
     const model = req.body?.model || process.env.OLLAMA_MODEL || "qwen2.5:7b-instruct";
-    const template = req.body?.template || "default";
+    const template = req.body?.template || DEFAULT_SUMMARY_TEMPLATE;
+    const transcript = recording.metadata?.transcript?.text?.trim() || `Recording title: ${recording.title}`;
 
     enforceProviderPolicy(providerId);
     const provider = getProvider(providerId);
 
-    const result = await provider.summarize(`Recording: ${recording.title}`, {
+    const result = await provider.summarize(transcript, {
       model,
       template,
+      apiKey: req.body?.apiKey || null,
       temperature: req.body?.temperature,
       max_tokens: req.body?.max_tokens
     });
