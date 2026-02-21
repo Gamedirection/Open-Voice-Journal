@@ -3,37 +3,39 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Open-Voice-Journal Control Surface</title>
+    <title>Open-Voice-Journal</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
-    <main class="shell">
-      <section class="panel">
+    <main class="app-shell">
+      <header class="hero">
         <h1>Open-Voice-Journal</h1>
-        <p class="subtitle">Summarization Provider Settings (Prototype)</p>
+        <p>Basic test app for web and Android APK validation.</p>
+      </header>
 
-        <label for="provider">Provider</label>
-        <select id="provider">
-          <option value="ollama_local">Ollama Local</option>
-          <option value="ollama_cloud">Ollama Cloud</option>
-          <option value="openai">OpenAI</option>
-          <option value="anthropic">Anthropic</option>
-          <option value="deepseek">DeepSeek</option>
-          <option value="custom_openai">Custom OpenAI-Compatible</option>
-        </select>
+      <section class="card-grid">
+        <article class="card">
+          <h2>API Status</h2>
+          <p id="apiStatus">Checking...</p>
+          <button id="refreshHealth">Refresh</button>
+        </article>
 
-        <label for="model">Model</label>
-        <input id="model" placeholder="qwen2.5:7b-instruct" />
+        <article class="card">
+          <h2>Create Test Recording</h2>
+          <input id="recordingTitle" placeholder="Enter recording title" value="Phone test memo" />
+          <button id="createRecording">Create Recording</button>
+          <p id="recordingResult">No recording created yet.</p>
+        </article>
 
-        <label for="endpoint">Endpoint (optional)</label>
-        <input id="endpoint" placeholder="https://api.example.com/v1" />
-
-        <button id="saveBtn">Save Provider Config</button>
-        <pre id="result"></pre>
+        <article class="card">
+          <h2>Queue Transcription</h2>
+          <input id="recordingId" placeholder="Paste recording ID" />
+          <button id="queueTranscription">Queue Job</button>
+          <p id="jobResult">No job queued yet.</p>
+        </article>
       </section>
     </main>
 
     <script src="script.js"></script>
   </body>
 </html>
-

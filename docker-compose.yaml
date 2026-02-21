@@ -1,6 +1,15 @@
 ﻿name: open-voice-journal
 
 services:
+  web:
+    image: nginx:alpine
+    ports:
+      - "8088:80"
+    volumes:
+      - ./frontend:/usr/share/nginx/html:ro
+    depends_on:
+      - api
+
   api:
     image: node:20-alpine
     working_dir: /app

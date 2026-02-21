@@ -1,0 +1,8 @@
+﻿{
+  "appId": "com.openvoicejournal.app",
+  "appName": "Open Voice Journal",
+  "webDir": "../frontend",
+  "server": {
+    "cleartext": true
+  }
+}

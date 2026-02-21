@@ -178,3 +178,21 @@ npm run smoke
 ## License
 
 MIT
+
+## Basic Web Test
+
+- Start core services + website:
+  - `docker compose up -d api worker postgres redis ollama web`
+- Open the test site:
+  - `http://localhost:8088`
+- The page can:
+  - check API health
+  - create a recording
+  - queue a transcription job
+
+## Android APK Test (Basic)
+
+- Generated debug APK path:
+  - `mobile/android/app/build/outputs/apk/debug/app-debug.apk`
+- For emulator, API host fallback is `10.0.2.2:8080`.
+- For a physical phone on LAN, access web UI via `http://<your-pc-ip>:8088` and ensure API is reachable at `<your-pc-ip>:8080`.
