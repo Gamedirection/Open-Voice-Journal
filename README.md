@@ -196,3 +196,14 @@ MIT
   - `mobile/android/app/build/outputs/apk/debug/app-debug.apk`
 - For emulator, API host fallback is `10.0.2.2:8080`.
 - For a physical phone on LAN, access web UI via `http://<your-pc-ip>:8088` and ensure API is reachable at `<your-pc-ip>:8080`.
+
+## APK Update-Friendly Build
+
+To allow install-over-update (no uninstall required), Android builds now use:
+- stable app signing key (`mobile/android/app/debug-keystore.jks`)
+- incremented app version code in `mobile/android/app/build.gradle`
+
+When creating a new APK, bump `versionCode` and `versionName` in:
+- `mobile/android/app/build.gradle`
+
+Then rebuild APK and install it over the existing app.

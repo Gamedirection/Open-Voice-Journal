@@ -1,6 +1,11 @@
 ﻿function resolveDefaultApiBase() {
   const hostname = window.location.hostname;
   const protocol = window.location.protocol;
+  const isCapacitor = Boolean(window.Capacitor);
+
+  if (isCapacitor) {
+    return "http://192.168.1.85:8080";
+  }
 
   if (protocol === "file:") {
     return "http://10.0.2.2:8080";
@@ -51,7 +56,7 @@ function setApiBase(value) {
 
 function renderApiBase() {
   apiBaseInputEl.value = API_BASE;
-  apiBaseLabelEl.textContent = `Using API: ${API_BASE}`;
+  apiBaseLabelEl.textContent = `Using API: ${API_BASE} | page=${window.location.origin || window.location.protocol}`;
 }
 
 async function checkHealth() {
@@ -110,7 +115,7 @@ saveApiBaseBtn.addEventListener("click", () => setApiBase(apiBaseInputEl.value))
 useEmulatorBtn.addEventListener("click", () => setApiBase("http://10.0.2.2:8080"));
 useLocalhostBtn.addEventListener("click", () => setApiBase("http://localhost:8080"));
 usePromptBtn.addEventListener("click", () => {
-  const value = prompt("Enter API URL (example: http://192.168.1.50:8080)", API_BASE);
+  const value = prompt("Enter API URL (example: http://192.168.1.85:8080)", API_BASE);
   if (value) setApiBase(value);
 });
 
