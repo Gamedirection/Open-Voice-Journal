@@ -27,19 +27,18 @@
         <div class="record-panel">
           <article class="card record-card">
             <h2>Record</h2>
-            <input id="recordingTitle" placeholder="Enter recording title" value="Phone test memo" />
+            <input id="recordingTitle" placeholder="Recording title" />
             <div class="visualizer">
               <canvas id="recordVisualizer" width="640" height="120"></canvas>
             </div>
             <div class="record-controls">
               <button id="recordStart" class="record-button" type="button" aria-label="Start recording"></button>
-              <button id="recordStop" class="stop-button" type="button" disabled>Stop</button>
+              <button id="recordStop" class="stop-button" type="button" disabled>Save</button>
             </div>
-            <button id="micEnable" class="ghost-button" type="button">Enable Microphone</button>
             <p id="recordStatus">Ready to record.</p>
-            <audio id="recordPlayback" controls></audio>
-            <div class="button-row">
-              <button id="recordDownload" type="button" disabled>Download Recording</button>
+            <div id="liveCaptionsPanel" class="live-captions" aria-live="polite">
+              <div id="liveCaptionsStatus" class="live-captions-status">Live captions: ready</div>
+              <div id="liveCaptionsText" class="live-captions-text">Captions will appear here while recording.</div>
             </div>
             <p id="uploadStatus" class="hint">Uploads enabled by default.</p>
             <p class="hint">Microphone permission required on first use.</p>
@@ -47,7 +46,7 @@
           <article class="card upload-card">
             <h2>Manual Upload</h2>
             <input id="manualTitle" placeholder="Upload title (optional)" />
-            <input id="manualFile" type="file" accept="audio/*" />
+            <input id="manualFile" type="file" accept="audio/*,.webm,.weba,.webp" />
             <div class="button-row">
               <button id="manualUpload" type="button">Upload File</button>
             </div>
@@ -62,12 +61,13 @@
             <h2>All Recordings</h2>
             <div class="recordings-header-actions">
               <div class="recordings-legend">
-                <span class="badge badge-cloud">&#x2601;&#xFE0F; Cloud</span>
-                <span class="badge badge-local">&#x1F3E0; Local</span>
+                <span class="legend-item">&#x2601;&#xFE0F; Cloud</span>
+                <span class="legend-item">&#x1F3E0; Local</span>
               </div>
               <button id="refreshRecordings" type="button">Refresh</button>
             </div>
           </div>
+          <input id="recordingsSearch" type="search" placeholder="Search titles, transcript text, or tags..." />
           <div id="recordingsList" class="recordings-list">No recordings yet.</div>
         </article>
       </section>
@@ -75,28 +75,75 @@
       <section id="tab-settings" class="tab-panel">
         <section class="card-grid">
           <article class="card">
-            <h2>Appearance</h2>
+            <h2>Settings</h2>
             <button id="themeToggle" class="toggle-button" type="button">Dark mode: Off</button>
+            <button id="micEnable" class="ghost-button" type="button">Enable Microphone</button>
+            <label class="switch-row">
+              <span>Upload recordings automatically</span>
+              <span class="switch">
+                <input id="uploadToggle" type="checkbox" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <label class="switch-row">
+              <span>Live captions while recording</span>
+              <span class="switch">
+                <input id="liveCaptionsToggle" type="checkbox" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <label class="switch-row">
+              <span>Debug transcript timestamps</span>
+              <span class="switch">
+                <input id="debugTranscriptTimestampsToggle" type="checkbox" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <p class="hint">Turn this off to keep recordings local only.</p>
+            <input
+              id="deadAirThresholdSeconds"
+              type="number"
+              min="0.3"
+              max="10"
+              step="0.1"
+              placeholder="Dead air threshold in seconds"
+            />
+            <button id="saveDeadAirThreshold" type="button">Save Dead Air Setting</button>
+            <p id="deadAirThresholdStatus" class="hint">Silence runs above threshold will be removed.</p>
           </article>
 
           <article class="card">
-            <h2>Recording Upload</h2>
-            <label class="toggle-row">
-              <input id="uploadToggle" type="checkbox" />
-              <span>Upload recordings automatically</span>
-            </label>
-            <p class="hint">Turn this off to keep recordings local only.</p>
+            <h2>Date & Time</h2>
+            <input id="timeZoneInput" placeholder="Time zone (example: America/New_York)" />
+            <div class="button-row">
+              <button id="saveTimeZone" type="button">Save Time Zone</button>
+              <button id="useSystemTimeZone" type="button">Use System Time Zone</button>
+            </div>
+            <p id="timeZoneStatus" class="hint">Using system time zone.</p>
           </article>
 
           <article class="card">
             <h2>Automation & AI</h2>
-            <label class="toggle-row">
-              <input id="autoTranscribeToggle" type="checkbox" />
+            <label class="switch-row">
               <span>Auto transcribe after upload</span>
+              <span class="switch">
+                <input id="autoTranscribeToggle" type="checkbox" />
+                <span class="slider"></span>
+              </span>
             </label>
-            <label class="toggle-row">
-              <input id="autoSummarizeToggle" type="checkbox" />
+            <label class="switch-row">
               <span>Auto summarize after transcription</span>
+              <span class="switch">
+                <input id="autoSummarizeToggle" type="checkbox" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <label class="switch-row">
+              <span>Identify unique voices in transcription</span>
+              <span class="switch">
+                <input id="identifyVoicesToggle" type="checkbox" />
+                <span class="slider"></span>
+              </span>
             </label>
             <input id="summaryProvider" placeholder="Summary provider (default: ollama_local)" />
             <input id="summaryModel" placeholder="Summary model (default: qwen2.5:7b-instruct)" />
@@ -123,10 +170,7 @@
             <p id="apiBaseLabel">Using auto API URL.</p>
             <p id="apiStatus">Checking...</p>
             <button id="refreshHealth" type="button">Refresh</button>
-          </article>
-
-          <article class="card">
-            <h2>API Tools</h2>
+            <h3 class="subsection-title">API Tools</h3>
             <input id="recordingId" placeholder="Paste recording ID" />
             <button id="createRecording" type="button">Create Test Recording</button>
             <button id="queueTranscription" type="button">Queue Job</button>
@@ -142,7 +186,11 @@
           </article>
 
           <article class="card">
-            <h2>Credits</h2>
+            <h2>Documentation & Credits</h2>
+            <p><a id="docsSwaggerLink" href="#" target="_blank" rel="noopener noreferrer">API Swagger</a></p>
+            <p><a id="docsOpenApiLink" href="#" target="_blank" rel="noopener noreferrer">OpenAPI JSON</a></p>
+            <p><a href="https://github.com/Gamedirection/Open-Voice-Journal/blob/main/README.md" target="_blank" rel="noopener noreferrer">README</a></p>
+            <p><a href="https://github.com/Gamedirection/Open-Voice-Journal" target="_blank" rel="noopener noreferrer">GitHub Repository</a></p>
             <p>
               Alex Sierputowski @
               <a href="https://gamedirection.net" target="_blank" rel="noopener noreferrer">GameDirection.net</a>
@@ -151,14 +199,6 @@
               Contact:
               <a href="https://join.gamedirection.net" target="_blank" rel="noopener noreferrer">join.gamedirection.net</a>
             </p>
-          </article>
-
-          <article class="card">
-            <h2>Documentation</h2>
-            <p><a id="docsSwaggerLink" href="#" target="_blank" rel="noopener noreferrer">API Swagger</a></p>
-            <p><a id="docsOpenApiLink" href="#" target="_blank" rel="noopener noreferrer">OpenAPI JSON</a></p>
-            <p><a href="https://github.com/Gamedirection/Open-Voice-Journal/blob/main/README.md" target="_blank" rel="noopener noreferrer">README</a></p>
-            <p><a href="https://github.com/Gamedirection/Open-Voice-Journal" target="_blank" rel="noopener noreferrer">GitHub Repository</a></p>
             <p id="docsVersion" class="hint">Version: loading...</p>
           </article>
         </section>

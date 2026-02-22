@@ -46,10 +46,34 @@ export function updateRecordingMetadata(id, metadataPatch = {}) {
   return updated;
 }
 
-export function listRecordings(limit = 50) {
-  return Array.from(state.recordings.values())
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .slice(0, Math.max(1, Number(limit) || 50));
+export function listRecordings(limitOrOptions = 50, maybeOffset = 0, maybeQuery = "") {
+  let limit = 50;
+  let offset = 0;
+  let queryText = "";
+  if (typeof limitOrOptions === "object" && limitOrOptions !== null) {
+    limit = Number(limitOrOptions.limit ?? 50);
+    offset = Number(limitOrOptions.offset ?? 0);
+    queryText = String(limitOrOptions.query ?? "").trim().toLowerCase();
+  } else {
+    limit = Number(limitOrOptions ?? 50);
+    offset = Number(maybeOffset ?? 0);
+    queryText = String(maybeQuery ?? "").trim().toLowerCase();
+  }
+
+  const safeLimit = Math.max(1, limit || 50);
+  const safeOffset = Math.max(0, offset || 0);
+  const all = Array.from(state.recordings.values())
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  const filtered = queryText
+    ? all.filter((recording) => {
+      const title = String(recording.title || "").toLowerCase();
+      const transcript = String(recording.metadata?.transcript?.text || "").toLowerCase();
+      const tags = Array.isArray(recording.metadata?.tags) ? recording.metadata.tags.join(" ").toLowerCase() : "";
+      return title.includes(queryText) || transcript.includes(queryText) || tags.includes(queryText);
+    })
+    : all;
+
+  return filtered.slice(safeOffset, safeOffset + safeLimit);
 }
 
 export function deleteRecording(id) {

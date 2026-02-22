@@ -2,6 +2,20 @@
 
 Open-Voice-Journal is a self-hosted, open-source transcription platform for teams that need secure voice memo workflows across web, PWA, and mobile.
 
+## Latest Release
+
+- Current backend/API version: `v0.3.0`
+- Current Android app version: `1.0.3` (`versionCode 4`)
+- Current mobile package version: `0.3.0`
+- Release date: `2026-02-22`
+
+Recent release highlights:
+- faster scrubber preload and waveform playback behavior
+- clickable transcript + active word highlighting
+- live captions with subtitle (`.srt`) export
+- dead-air removal workflow with automatic re-transcription/summarization
+- tags/search/pagination and queue deduplication improvements
+
 ## Vision
 
 Capture audio, transcribe it, identify speakers, and convert conversations into searchable records and structured summaries.

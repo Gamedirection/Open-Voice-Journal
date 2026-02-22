@@ -2,6 +2,24 @@
 
 All notable changes to Open-Voice-Journal will be documented in this file.
 
+## v0.3.0 - 2026-02-22
+
+- Added immediate playback preload improvements with cached duration/waveform metadata.
+- Added waveform + scrubber loading indicators and fixed playback restart behavior at end of audio.
+- Added clickable transcript words and speaker transcript words with seek-to-word playback.
+- Added active word highlighting during playback and improved timing alignment pipeline.
+- Added sentence/word timing fallback improvements using provider timings, CC anchors, and waveform weighting.
+- Added live captions while recording, including settings toggle and auto-scroll caption panel.
+- Added caption timestamp persistence and per-recording `.srt` caption export (`CC` icon).
+- Added dead-air removal tool to generate new `[Dead Air Removed]` recordings with re-transcribe + summary.
+- Added recording tags UI and AI-generated 1-2 word tags from transcript content.
+- Added recordings search by title/transcript/tags and paginated cloud loading.
+- Added hold-to-save behavior override for local/cloud save flows.
+- Added consolidated Settings/Documentation layout updates and refreshed transcript action labels.
+- Added API deduplication for transcription queue requests (prevents duplicate jobs per recording while running).
+- Added new recording metadata endpoints and updates (`/tags`, `/speakers`, `/captions`) and refreshed OpenAPI docs.
+- Bumped backend/mobile/OpenAPI versions and Android app version code/name for release.
+
 ## v0.1.2 - 2026-02-21
 
 - Added cloud and local recording deletion actions with confirmation warnings.

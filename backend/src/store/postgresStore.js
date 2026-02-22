@@ -109,15 +109,37 @@ export async function updateRecordingMetadata(id, metadataPatch = {}) {
   return result.rows[0] ? mapRecording(result.rows[0]) : null;
 }
 
-export async function listRecordings(limit = 50) {
+export async function listRecordings(limitOrOptions = 50, maybeOffset = 0, maybeQuery = "") {
+  let limit = 50;
+  let offset = 0;
+  let queryText = "";
+  if (typeof limitOrOptions === "object" && limitOrOptions !== null) {
+    limit = Number(limitOrOptions.limit ?? 50);
+    offset = Number(limitOrOptions.offset ?? 0);
+    queryText = String(limitOrOptions.query ?? "").trim();
+  } else {
+    limit = Number(limitOrOptions ?? 50);
+    offset = Number(maybeOffset ?? 0);
+    queryText = String(maybeQuery ?? "").trim();
+  }
+  const safeLimit = Math.max(1, limit || 50);
+  const safeOffset = Math.max(0, offset || 0);
+
   const result = await query(
     `
       SELECT id, title, status, metadata, created_at
       FROM recordings
+      WHERE (
+        $3 = ''
+        OR title ILIKE ('%' || $3 || '%')
+        OR COALESCE(metadata->'transcript'->>'text', '') ILIKE ('%' || $3 || '%')
+        OR COALESCE((metadata->'tags')::text, '') ILIKE ('%' || $3 || '%')
+      )
       ORDER BY created_at DESC
+      OFFSET $2
       LIMIT $1
     `,
-    [limit]
+    [safeLimit, safeOffset, queryText]
   );
 
   return result.rows.map(mapRecording);

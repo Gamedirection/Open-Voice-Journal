@@ -1,6 +1,6 @@
 ﻿{
   "name": "open-voice-journal-mobile",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "private": true,
   "scripts": {
     "cap:sync": "npx cap sync android",

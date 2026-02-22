@@ -1,5 +1,5 @@
 ﻿import { Router } from "express";
-import { createSummary, getRecording, getSummary, listSummariesByRecording } from "../store/store.js";
+import { createSummary, getRecording, getSummary, listSummariesByRecording, updateRecordingMetadata } from "../store/store.js";
 import { enforceProviderPolicy } from "../policies/modelPolicy.js";
 import { getProvider } from "../providers/providers.js";
 
@@ -12,6 +12,23 @@ const DEFAULT_SUMMARY_TEMPLATE = [
   "Return clean Markdown with sections and concise bullets."
 ].join(" ");
 
+const TAG_TEMPLATE = [
+  "Return 1 to 5 topic tags for this transcript.",
+  "Each tag must be one or two words only.",
+  "No numbering, no markdown, no explanation.",
+  "Return comma-separated tags only."
+].join(" ");
+
+function extractTags(value) {
+  return String(value || "")
+    .split(/[\n,]+/)
+    .map((item) => item.trim().replace(/^[-*#\d.\s]+/, ""))
+    .map((item) => item.replace(/[^\w\s-]/g, " ").replace(/\s+/g, " ").trim())
+    .filter((item) => item.split(" ").filter(Boolean).length <= 2)
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
 summaryRouter.post("/recordings/:id/summaries", async (req, res) => {
   try {
     const recordingId = req.params.id;
@@ -22,6 +39,7 @@ summaryRouter.post("/recordings/:id/summaries", async (req, res) => {
     const model = req.body?.model || process.env.OLLAMA_MODEL || "qwen2.5:7b-instruct";
     const template = req.body?.template || DEFAULT_SUMMARY_TEMPLATE;
     const transcript = recording.metadata?.transcript?.text?.trim() || `Recording title: ${recording.title}`;
+    const tagTranscript = recording.metadata?.transcript?.text?.trim() || "";
 
     enforceProviderPolicy(providerId);
     const provider = getProvider(providerId);
@@ -42,7 +60,28 @@ summaryRouter.post("/recordings/:id/summaries", async (req, res) => {
       markdown: result.markdown
     });
 
-    res.status(201).json({ summary, usage: result.usage });
+    let tags = [];
+    try {
+      if (tagTranscript) {
+        const tagResult = await provider.summarize(tagTranscript, {
+          model,
+          template: TAG_TEMPLATE,
+          apiKey: req.body?.apiKey || null,
+          temperature: 0.2,
+          max_tokens: 120
+        });
+        tags = extractTags(tagResult?.markdown || "");
+        if (tags.length) {
+          const existing = Array.isArray(recording.metadata?.tags) ? recording.metadata.tags : [];
+          const mergedTags = Array.from(new Set([...existing, ...tags])).slice(0, 20);
+          await updateRecordingMetadata(recordingId, { tags: mergedTags });
+        }
+      }
+    } catch (_error) {
+      tags = [];
+    }
+
+    res.status(201).json({ summary, usage: result.usage, tags });
   } catch (error) {
     res.status(400).json({ error: error.message });
   }

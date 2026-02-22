@@ -33,13 +33,19 @@ function normalizeBaseUrl(value) {
 const SAVED_API_KEY = "ovj_api_base";
 const THEME_KEY = "ovj_theme";
 const UPLOAD_KEY = "ovj_upload_enabled";
+const LIVE_CAPTIONS_KEY = "ovj_live_captions_enabled";
+const DEBUG_TRANSCRIPT_TIMESTAMPS_KEY = "ovj_debug_transcript_timestamps";
 const TAB_KEY = "ovj_active_tab";
 const AUTO_TRANSCRIBE_KEY = "ovj_auto_transcribe";
 const AUTO_SUMMARIZE_KEY = "ovj_auto_summarize";
+const IDENTIFY_VOICES_KEY = "ovj_identify_voices";
 const SUMMARY_PROVIDER_KEY = "ovj_summary_provider";
 const SUMMARY_MODEL_KEY = "ovj_summary_model";
 const SUMMARY_API_KEY_KEY = "ovj_summary_api_key";
 const SUMMARY_TEMPLATE_KEY = "ovj_summary_template";
+const TIME_ZONE_KEY = "ovj_time_zone";
+const DEAD_AIR_THRESHOLD_KEY = "ovj_dead_air_threshold_seconds";
+const PLAYBACK_META_KEY_PREFIX = "ovj_playback_meta_v1_";
 
 let API_BASE = localStorage.getItem(SAVED_API_KEY) || resolveDefaultApiBase();
 API_BASE = normalizeBaseUrl(API_BASE);
@@ -47,6 +53,10 @@ API_BASE = normalizeBaseUrl(API_BASE);
 let currentTheme = localStorage.getItem(THEME_KEY);
 let uploadEnabled = localStorage.getItem(UPLOAD_KEY);
 uploadEnabled = uploadEnabled === null ? true : uploadEnabled === "true";
+let liveCaptionsEnabled = localStorage.getItem(LIVE_CAPTIONS_KEY);
+liveCaptionsEnabled = liveCaptionsEnabled === null ? true : liveCaptionsEnabled === "true";
+let debugTranscriptTimestampsEnabled = localStorage.getItem(DEBUG_TRANSCRIPT_TIMESTAMPS_KEY);
+debugTranscriptTimestampsEnabled = debugTranscriptTimestampsEnabled === null ? true : debugTranscriptTimestampsEnabled === "true";
 
 const apiBaseInputEl = document.getElementById("apiBaseInput");
 const saveApiBaseBtn = document.getElementById("saveApiBase");
@@ -61,6 +71,7 @@ const queueTranscriptionBtn = document.getElementById("queueTranscription");
 const createBackupBtn = document.getElementById("createBackup");
 const autoTranscribeToggleEl = document.getElementById("autoTranscribeToggle");
 const autoSummarizeToggleEl = document.getElementById("autoSummarizeToggle");
+const identifyVoicesToggleEl = document.getElementById("identifyVoicesToggle");
 const summaryProviderEl = document.getElementById("summaryProvider");
 const summaryModelEl = document.getElementById("summaryModel");
 const summaryApiKeyEl = document.getElementById("summaryApiKey");
@@ -70,6 +81,13 @@ const saveAiSettingsBtn = document.getElementById("saveAiSettings");
 const resetAiSettingsBtn = document.getElementById("resetAiSettings");
 const aiSettingsStatusEl = document.getElementById("aiSettingsStatus");
 const recordingTitleEl = document.getElementById("recordingTitle");
+const timeZoneInputEl = document.getElementById("timeZoneInput");
+const saveTimeZoneBtn = document.getElementById("saveTimeZone");
+const useSystemTimeZoneBtn = document.getElementById("useSystemTimeZone");
+const timeZoneStatusEl = document.getElementById("timeZoneStatus");
+const deadAirThresholdInputEl = document.getElementById("deadAirThresholdSeconds");
+const saveDeadAirThresholdBtn = document.getElementById("saveDeadAirThreshold");
+const deadAirThresholdStatusEl = document.getElementById("deadAirThresholdStatus");
 const recordingIdEl = document.getElementById("recordingId");
 const recordingResultEl = document.getElementById("recordingResult");
 const jobResultEl = document.getElementById("jobResult");
@@ -77,11 +95,14 @@ const backupStatusEl = document.getElementById("backupStatus");
 const backupListEl = document.getElementById("backupList");
 const themeToggleBtn = document.getElementById("themeToggle");
 const uploadToggleEl = document.getElementById("uploadToggle");
+const liveCaptionsToggleEl = document.getElementById("liveCaptionsToggle");
+const debugTranscriptTimestampsToggleEl = document.getElementById("debugTranscriptTimestampsToggle");
 const recordStartBtn = document.getElementById("recordStart");
 const recordStopBtn = document.getElementById("recordStop");
-const recordDownloadBtn = document.getElementById("recordDownload");
 const recordStatusEl = document.getElementById("recordStatus");
-const recordPlaybackEl = document.getElementById("recordPlayback");
+const liveCaptionsPanelEl = document.getElementById("liveCaptionsPanel");
+const liveCaptionsStatusEl = document.getElementById("liveCaptionsStatus");
+const liveCaptionsTextEl = document.getElementById("liveCaptionsText");
 const uploadStatusEl = document.getElementById("uploadStatus");
 const manualTitleEl = document.getElementById("manualTitle");
 const manualFileEl = document.getElementById("manualFile");
@@ -89,6 +110,7 @@ const manualUploadBtn = document.getElementById("manualUpload");
 const manualStatusEl = document.getElementById("manualStatus");
 const micEnableBtn = document.getElementById("micEnable");
 const recordingsListEl = document.getElementById("recordingsList");
+const recordingsSearchEl = document.getElementById("recordingsSearch");
 const refreshRecordingsBtn = document.getElementById("refreshRecordings");
 const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
 const tabPanels = Array.from(document.querySelectorAll(".tab-panel"));
@@ -111,17 +133,36 @@ const localRecordings = new Map();
 const summaryCache = new Map();
 const recordingUiState = new Map();
 const recordingTaskQueues = new Map();
+const playbackControllers = new Map();
+const playbackLoaders = new Map();
+const transcriptWordRegistry = new Map();
 
 let autoTranscribeEnabled = localStorage.getItem(AUTO_TRANSCRIBE_KEY);
 autoTranscribeEnabled = autoTranscribeEnabled === null ? false : autoTranscribeEnabled === "true";
 let autoSummarizeEnabled = localStorage.getItem(AUTO_SUMMARIZE_KEY);
 autoSummarizeEnabled = autoSummarizeEnabled === null ? false : autoSummarizeEnabled === "true";
+let identifyVoicesEnabled = localStorage.getItem(IDENTIFY_VOICES_KEY);
+identifyVoicesEnabled = identifyVoicesEnabled === null ? false : identifyVoicesEnabled === "true";
 let summaryProvider = localStorage.getItem(SUMMARY_PROVIDER_KEY) || DEFAULT_SUMMARY_PROVIDER;
 let summaryModel = localStorage.getItem(SUMMARY_MODEL_KEY) || DEFAULT_SUMMARY_MODEL;
 let summaryApiKey = localStorage.getItem(SUMMARY_API_KEY_KEY) || "";
 let summaryTemplate = localStorage.getItem(SUMMARY_TEMPLATE_KEY) || DEFAULT_SUMMARY_TEMPLATE;
+let preferredTimeZone = localStorage.getItem(TIME_ZONE_KEY) || Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+const parsedDeadAirThreshold = Number(localStorage.getItem(DEAD_AIR_THRESHOLD_KEY));
+let deadAirThresholdSeconds = Number.isFinite(parsedDeadAirThreshold) && parsedDeadAirThreshold > 0
+  ? parsedDeadAirThreshold
+  : 1.5;
+let lastAutoRecordingTitle = "";
+let cloudRecordings = [];
+let cloudOffset = 0;
+let cloudHasMore = true;
+let cloudLoading = false;
+let cloudQuery = "";
+let recordingsScrollTicking = false;
+const CLOUD_PAGE_SIZE = 25;
+const SCROLL_LOAD_THRESHOLD_PX = 1000;
 
-function createLocalRecording({ title, blob, downloadUrl, createdAt }) {
+function createLocalRecording({ title, blob, downloadUrl, createdAt, durationSeconds = 0, captionAnchors = [] }) {
   const id = `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
   const entry = {
     id,
@@ -130,6 +171,8 @@ function createLocalRecording({ title, blob, downloadUrl, createdAt }) {
     createdAt: createdAt || new Date().toISOString(),
     blob,
     downloadUrl,
+    durationSeconds: Number.isFinite(Number(durationSeconds)) ? Number(durationSeconds) : 0,
+    captionAnchors: Array.isArray(captionAnchors) ? captionAnchors : [],
     uploadStatus: "local"
   };
   localRecordings.set(id, entry);
@@ -155,7 +198,66 @@ function formatTimestamp(value) {
   if (!value) return "Unknown time";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Unknown time";
-  return date.toLocaleString();
+  return date.toLocaleString(undefined, { timeZone: preferredTimeZone });
+}
+
+function validateTimeZone(value) {
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: value }).format(new Date());
+    return true;
+  } catch (_error) {
+    return false;
+  }
+}
+
+function buildDefaultRecordingTitle(date = new Date()) {
+  const formatter = new Intl.DateTimeFormat("en-US", {
+    timeZone: preferredTimeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false
+  });
+  const parts = formatter.formatToParts(date).reduce((acc, part) => {
+    acc[part.type] = part.value;
+    return acc;
+  }, {});
+  return `Recording ${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}:${parts.second}`;
+}
+
+function applyDefaultRecordingTitle(force = false) {
+  if (!recordingTitleEl) return;
+  const current = recordingTitleEl.value.trim();
+  if (!force && current && current !== lastAutoRecordingTitle) return;
+  const next = buildDefaultRecordingTitle();
+  recordingTitleEl.value = next;
+  lastAutoRecordingTitle = next;
+}
+
+function renderTimeZoneSettings() {
+  if (timeZoneInputEl) timeZoneInputEl.value = preferredTimeZone;
+  if (timeZoneStatusEl) {
+    timeZoneStatusEl.textContent = `Default recording title time zone: ${preferredTimeZone}`;
+  }
+}
+
+function sanitizeDeadAirThresholdSeconds(value) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return deadAirThresholdSeconds;
+  return Math.min(10, Math.max(0.3, parsed));
+}
+
+function renderDeadAirSettings() {
+  deadAirThresholdSeconds = sanitizeDeadAirThresholdSeconds(deadAirThresholdSeconds);
+  if (deadAirThresholdInputEl) {
+    deadAirThresholdInputEl.value = String(deadAirThresholdSeconds);
+  }
+  if (deadAirThresholdStatusEl) {
+    deadAirThresholdStatusEl.textContent = `Silence runs >= ${deadAirThresholdSeconds.toFixed(1)}s will be removed.`;
+  }
 }
 
 function formatBytes(value) {
@@ -273,6 +375,7 @@ function getSummaryRequestConfig() {
 function renderAiSettings() {
   if (autoTranscribeToggleEl) autoTranscribeToggleEl.checked = autoTranscribeEnabled;
   if (autoSummarizeToggleEl) autoSummarizeToggleEl.checked = autoSummarizeEnabled;
+  if (identifyVoicesToggleEl) identifyVoicesToggleEl.checked = identifyVoicesEnabled;
   if (summaryProviderEl) summaryProviderEl.value = summaryProvider;
   if (summaryModelEl) summaryModelEl.value = summaryModel;
   if (summaryApiKeyEl) summaryApiKeyEl.value = summaryApiKey;
@@ -290,6 +393,7 @@ function saveAiSettings() {
   summaryTemplate = (summaryPromptEl?.value || DEFAULT_SUMMARY_TEMPLATE).trim() || DEFAULT_SUMMARY_TEMPLATE;
   autoTranscribeEnabled = Boolean(autoTranscribeToggleEl?.checked);
   autoSummarizeEnabled = Boolean(autoSummarizeToggleEl?.checked);
+  identifyVoicesEnabled = Boolean(identifyVoicesToggleEl?.checked);
 
   localStorage.setItem(SUMMARY_PROVIDER_KEY, summaryProvider);
   localStorage.setItem(SUMMARY_MODEL_KEY, summaryModel);
@@ -297,6 +401,7 @@ function saveAiSettings() {
   localStorage.setItem(SUMMARY_TEMPLATE_KEY, summaryTemplate);
   localStorage.setItem(AUTO_TRANSCRIBE_KEY, String(autoTranscribeEnabled));
   localStorage.setItem(AUTO_SUMMARIZE_KEY, String(autoSummarizeEnabled));
+  localStorage.setItem(IDENTIFY_VOICES_KEY, String(identifyVoicesEnabled));
 
   if (aiSettingsStatusEl) {
     aiSettingsStatusEl.textContent = `Saved. Provider: ${summaryProvider} | model: ${summaryModel}`;
@@ -310,6 +415,7 @@ function resetAiSettings() {
   summaryTemplate = DEFAULT_SUMMARY_TEMPLATE;
   autoTranscribeEnabled = false;
   autoSummarizeEnabled = false;
+  identifyVoicesEnabled = false;
 
   localStorage.setItem(SUMMARY_PROVIDER_KEY, summaryProvider);
   localStorage.setItem(SUMMARY_MODEL_KEY, summaryModel);
@@ -317,12 +423,13 @@ function resetAiSettings() {
   localStorage.setItem(SUMMARY_TEMPLATE_KEY, summaryTemplate);
   localStorage.setItem(AUTO_TRANSCRIBE_KEY, String(autoTranscribeEnabled));
   localStorage.setItem(AUTO_SUMMARIZE_KEY, String(autoSummarizeEnabled));
+  localStorage.setItem(IDENTIFY_VOICES_KEY, String(identifyVoicesEnabled));
   renderAiSettings();
   if (aiSettingsStatusEl) aiSettingsStatusEl.textContent = "AI settings restored to defaults.";
 }
 
 function buildTranscriptMarkdown(recording) {
-  const transcriptText = recording.metadata?.transcript?.text || "No transcript available.";
+  const transcriptText = buildFormattedTranscriptText(recording);
   return [
     `# Transcript - ${recording.title}`,
     "",
@@ -331,6 +438,34 @@ function buildTranscriptMarkdown(recording) {
     "",
     transcriptText
   ].join("\n");
+}
+
+function buildFormattedTranscriptText(recording) {
+  const transcriptText = recording.metadata?.transcript?.text || "No transcript available.";
+  const segments = Array.isArray(recording.metadata?.transcript?.segments)
+    ? recording.metadata.transcript.segments
+    : [];
+  if (!segments.length) return transcriptText;
+  const speakerLabels = recording.metadata?.speakers?.labels || {};
+  return segments
+    .map((seg) => {
+      const speakerId = seg?.speakerId;
+      const speaker = speakerLabels[speakerId] || speakerId || "Speaker";
+      const text = String(seg?.text || "").trim();
+      return text ? `**${speaker}:** ${text}` : `**${speaker}:**`;
+    })
+    .join("\n\n");
+}
+
+const SPEAKER_COLORS = ["#2563eb", "#16a34a", "#dc2626", "#7c3aed", "#ea580c", "#0891b2", "#be123c"];
+
+function getSpeakerColor(speakerId) {
+  let hash = 0;
+  for (let i = 0; i < String(speakerId || "").length; i += 1) {
+    hash = ((hash << 5) - hash) + String(speakerId).charCodeAt(i);
+    hash |= 0;
+  }
+  return SPEAKER_COLORS[Math.abs(hash) % SPEAKER_COLORS.length];
 }
 
 function buildSummaryMarkdown(recording, markdown) {
@@ -344,12 +479,343 @@ function buildSummaryMarkdown(recording, markdown) {
   ].join("\n");
 }
 
+function getPlaybackMetaStorageKey(recordingId) {
+  return `${PLAYBACK_META_KEY_PREFIX}${recordingId}`;
+}
+
+function getCachedPlaybackMeta(recordingId) {
+  try {
+    const raw = localStorage.getItem(getPlaybackMetaStorageKey(recordingId));
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch (_error) {
+    return null;
+  }
+}
+
+function saveCachedPlaybackMeta(recordingId, patch) {
+  if (!recordingId || !patch || typeof patch !== "object") return;
+  const current = getCachedPlaybackMeta(recordingId) || {};
+  const next = { ...current, ...patch };
+  try {
+    localStorage.setItem(getPlaybackMetaStorageKey(recordingId), JSON.stringify(next));
+  } catch (_error) {
+    // Ignore storage limits.
+  }
+}
+
 async function fetchRecordingAudioBlob(recordingId) {
   const response = await fetch(`${API_BASE}/api/v1/recordings/${recordingId}/file`);
   if (!response.ok) {
     throw new Error(`Audio request failed (${response.status})`);
   }
   return response.blob();
+}
+
+function getRecordingAudioUrl(recordingId) {
+  return `${API_BASE}/api/v1/recordings/${recordingId}/file`;
+}
+
+function getRecordingDurationHint(recording) {
+  const durationSeconds = Number(recording?.metadata?.audio?.durationSeconds);
+  if (Number.isFinite(durationSeconds) && durationSeconds > 0) return durationSeconds;
+  const durationMs = Number(recording?.metadata?.audio?.durationMs);
+  if (Number.isFinite(durationMs) && durationMs > 0) return durationMs / 1000;
+  const transcript = recording?.metadata?.transcript || {};
+  const candidateEnds = [];
+  if (Array.isArray(transcript.wordTimings)) {
+    transcript.wordTimings.forEach((entry) => {
+      const end = Number(entry?.end);
+      const start = Number(entry?.start);
+      if (Number.isFinite(end) && end > 0) candidateEnds.push(end);
+      else if (Number.isFinite(start) && start > 0) candidateEnds.push(start);
+    });
+  }
+  if (Array.isArray(transcript.providerSegments)) {
+    transcript.providerSegments.forEach((entry) => {
+      const end = Number(entry?.end);
+      const start = Number(entry?.start);
+      if (Number.isFinite(end) && end > 0) candidateEnds.push(end);
+      else if (Number.isFinite(start) && start > 0) candidateEnds.push(start);
+    });
+  }
+  if (Array.isArray(transcript.segments)) {
+    transcript.segments.forEach((entry) => {
+      const end = Number(entry?.end);
+      const start = Number(entry?.start);
+      if (Number.isFinite(end) && end > 0) candidateEnds.push(end);
+      else if (Number.isFinite(start) && start > 0) candidateEnds.push(start);
+    });
+  }
+  if (candidateEnds.length) {
+    return Math.max(...candidateEnds);
+  }
+  return 0;
+}
+
+function getRecordingWaveformPeaks(recording) {
+  const peaks = recording?.metadata?.audio?.waveformPeaks;
+  if (!Array.isArray(peaks)) return [];
+  return peaks
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value) && value >= 0);
+}
+
+function getCaptionAnchors(recording) {
+  const raw = recording?.metadata?.audio?.captionAnchors;
+  if (!Array.isArray(raw) || !raw.length) return [];
+  const normalized = raw
+    .map((entry) => ({
+      text: String(entry?.text || "").trim(),
+      at: Number(entry?.at)
+    }))
+    .filter((entry) => entry.text && Number.isFinite(entry.at) && entry.at >= 0)
+    .sort((a, b) => a.at - b.at);
+  if (!normalized.length) return [];
+  const anchors = [];
+  let previousEnd = 0;
+  normalized.forEach((entry, index) => {
+    const nextAt = index < normalized.length - 1 ? normalized[index + 1].at : NaN;
+    const end = Number.isFinite(nextAt) && nextAt > entry.at
+      ? nextAt
+      : (entry.at + 1.2);
+    const start = Math.max(0, Math.min(entry.at, previousEnd + 0.05));
+    if (end > start) {
+      anchors.push({
+        text: entry.text,
+        start,
+        end
+      });
+      previousEnd = end;
+    }
+  });
+  return anchors;
+}
+
+function getCaptionAnchorsFromSentenceAnchors(recording) {
+  const anchors = buildSentenceAnchors(recording)
+    .map((entry) => ({
+      text: String(entry?.text || "").trim(),
+      at: Number(entry?.start)
+    }))
+    .filter((entry) => entry.text && Number.isFinite(entry.at) && entry.at >= 0);
+  return anchors.slice(0, 500);
+}
+
+async function ensureCaptionAnchorsPersisted(recordingId) {
+  if (!recordingId) return;
+  const response = await fetch(`${API_BASE}/api/v1/recordings/${recordingId}`);
+  const isJson = response.headers.get("content-type")?.includes("application/json");
+  const payload = isJson ? await response.json() : await response.text();
+  if (!response.ok) {
+    const message = typeof payload === "string" ? payload : payload.error;
+    throw new Error(message || `Recording lookup failed (${response.status})`);
+  }
+  const recording = payload;
+  const existing = recording?.metadata?.audio?.captionAnchors;
+  if (Array.isArray(existing) && existing.length) return;
+  const anchors = getCaptionAnchorsFromSentenceAnchors(recording);
+  if (!anchors.length) return;
+  await saveCaptionAnchors(recordingId, anchors);
+}
+
+async function resolveCaptionAnchorsForExport(recording) {
+  const existing = getCaptionAnchors(recording);
+  if (existing.length) return existing;
+  const synthesized = getCaptionAnchorsFromSentenceAnchors(recording);
+  if (!synthesized.length) return [];
+  if (recording?.id && recording?.metadata?.audio?.fileName) {
+    try {
+      await saveCaptionAnchors(recording.id, synthesized);
+    } catch (_error) {
+      // Best-effort persistence; still allow export.
+    }
+  }
+  return synthesized;
+}
+
+function formatSrtTimestamp(seconds) {
+  const clamped = Math.max(0, Number(seconds) || 0);
+  const totalMs = Math.floor(clamped * 1000);
+  const ms = String(totalMs % 1000).padStart(3, "0");
+  const totalSeconds = Math.floor(totalMs / 1000);
+  const sec = String(totalSeconds % 60).padStart(2, "0");
+  const totalMinutes = Math.floor(totalSeconds / 60);
+  const min = String(totalMinutes % 60).padStart(2, "0");
+  const hour = String(Math.floor(totalMinutes / 60)).padStart(2, "0");
+  return `${hour}:${min}:${sec},${ms}`;
+}
+
+function buildSrtFromAnchors(anchors, durationHintSeconds = 0) {
+  if (!Array.isArray(anchors) || !anchors.length) return "";
+  const durationHint = Number(durationHintSeconds) > 0 ? Number(durationHintSeconds) : 0;
+  const lines = [];
+  anchors.forEach((entry, index) => {
+    const start = Math.max(0, Number(entry?.at) || 0);
+    const next = index < anchors.length - 1 ? Number(anchors[index + 1]?.at) : NaN;
+    const end = Number.isFinite(next) && next > start
+      ? next
+      : Math.min(durationHint || (start + 2), start + 2);
+    const text = String(entry?.text || "").trim();
+    if (!text) return;
+    lines.push(String(lines.length + 1));
+    lines.push(`${formatSrtTimestamp(start)} --> ${formatSrtTimestamp(Math.max(start + 0.1, end))}`);
+    lines.push(text);
+    lines.push("");
+  });
+  return lines.join("\n").trim();
+}
+
+async function saveCaptionAnchors(recordingId, anchors) {
+  const response = await fetch(`${API_BASE}/api/v1/recordings/${recordingId}/captions`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ anchors })
+  });
+  const isJson = response.headers.get("content-type")?.includes("application/json");
+  const payload = isJson ? await response.json() : await response.text();
+  if (!response.ok) {
+    const message = typeof payload === "string" ? payload : payload.error;
+    throw new Error(message || `Save CC failed (${response.status})`);
+  }
+  return payload?.recording || null;
+}
+
+function getSpeechWindowFromWaveform(recording, durationHintSeconds = 0) {
+  const duration = Number(durationHintSeconds) > 0
+    ? Number(durationHintSeconds)
+    : Number(getRecordingDurationHint(recording));
+  const peaks = getRecordingWaveformPeaks(recording);
+  if (!(duration > 0) || !peaks.length) return null;
+  const maxPeak = Math.max(...peaks, 0);
+  const minPeak = Math.min(...peaks, maxPeak);
+  if (!(maxPeak > 0)) return null;
+  const dynamicThreshold = minPeak + ((maxPeak - minPeak) * 0.18);
+  const threshold = Math.max(0.12, dynamicThreshold);
+  let firstActive = -1;
+  let lastActive = -1;
+  peaks.forEach((value, index) => {
+    if (value >= threshold) {
+      if (firstActive < 0) firstActive = index;
+      lastActive = index;
+    }
+  });
+  if (firstActive < 0 || lastActive < 0) return null;
+  const bucketSeconds = duration / peaks.length;
+  const start = Math.max(0, (firstActive * bucketSeconds) - Math.max(0.12, bucketSeconds * 0.6));
+  const end = Math.min(duration, ((lastActive + 1) * bucketSeconds) + Math.max(0.16, bucketSeconds * 0.8));
+  if (!(end > start)) return null;
+  return { start, end };
+}
+
+function mapWaveformFractionToTime(weights, bucketSeconds, startSeconds, fraction) {
+  if (!Array.isArray(weights) || !weights.length || !(bucketSeconds > 0)) {
+    return Number(startSeconds) || 0;
+  }
+  const clamped = Math.min(1, Math.max(0, Number(fraction) || 0));
+  const totalWeight = weights.reduce((acc, value) => acc + (Number(value) || 0), 0);
+  if (!(totalWeight > 0)) {
+    return startSeconds + (weights.length * bucketSeconds * clamped);
+  }
+  const target = totalWeight * clamped;
+  let cumulative = 0;
+  for (let i = 0; i < weights.length; i += 1) {
+    const weight = Math.max(0, Number(weights[i]) || 0);
+    const next = cumulative + weight;
+    if (target <= next || i === weights.length - 1) {
+      const localRatio = weight > 0 ? ((target - cumulative) / weight) : 0;
+      return startSeconds + ((i + Math.min(1, Math.max(0, localRatio))) * bucketSeconds);
+    }
+    cumulative = next;
+  }
+  return startSeconds + (weights.length * bucketSeconds);
+}
+
+function getWaveformWeightedSpeechMap(recording, durationHintSeconds = 0) {
+  const duration = Number(durationHintSeconds) > 0
+    ? Number(durationHintSeconds)
+    : Number(getRecordingDurationHint(recording));
+  const peaks = getRecordingWaveformPeaks(recording);
+  if (!(duration > 0) || peaks.length < 4) return null;
+  const maxPeak = Math.max(...peaks, 0);
+  const minPeak = Math.min(...peaks, maxPeak);
+  if (!(maxPeak > minPeak)) return null;
+
+  // Keep quiet speech at the tail, but still down-weight silence.
+  const lowThreshold = Math.max(0.085, minPeak + ((maxPeak - minPeak) * 0.04));
+  let firstActive = -1;
+  let lastActive = -1;
+  peaks.forEach((value, index) => {
+    if (value >= lowThreshold) {
+      if (firstActive < 0) firstActive = index;
+      lastActive = index;
+    }
+  });
+  if (firstActive < 0 || lastActive < 0 || lastActive <= firstActive) return null;
+
+  const bucketSeconds = duration / peaks.length;
+  const weights = [];
+  for (let i = firstActive; i <= lastActive; i += 1) {
+    const peak = peaks[i];
+    const voiced = Math.max(0, peak - lowThreshold);
+    // Baseline keeps timing monotonic through pauses; voiced energy pulls more words to speech.
+    weights.push(0.08 + (voiced * 4.5));
+  }
+  const startSeconds = firstActive * bucketSeconds;
+  return {
+    startSeconds,
+    bucketSeconds,
+    weights,
+    mapFraction: (fraction) => mapWaveformFractionToTime(weights, bucketSeconds, startSeconds, fraction)
+  };
+}
+
+function buildWaveformSpanWordWindows(recording, spanStart, spanEnd, wordCount, durationHintSeconds = 0) {
+  const duration = Number(durationHintSeconds) > 0
+    ? Number(durationHintSeconds)
+    : Number(getRecordingDurationHint(recording));
+  const peaks = getRecordingWaveformPeaks(recording);
+  if (!(duration > 0) || !peaks.length || !(spanEnd > spanStart) || wordCount <= 0) return null;
+  const bucketSeconds = duration / peaks.length;
+  if (!(bucketSeconds > 0)) return null;
+  const startIndex = Math.max(0, Math.floor(spanStart / bucketSeconds));
+  const endIndex = Math.min(peaks.length - 1, Math.ceil(spanEnd / bucketSeconds));
+  if (endIndex <= startIndex) return null;
+
+  const localPeaks = peaks.slice(startIndex, endIndex + 1);
+  const maxPeak = Math.max(...localPeaks, 0);
+  const minPeak = Math.min(...localPeaks, maxPeak);
+  const threshold = Math.max(0.085, minPeak + ((maxPeak - minPeak) * 0.05));
+  const weights = localPeaks.map((value) => {
+    const voiced = Math.max(0, value - threshold);
+    // Keep monotonic progress through pauses, but heavily favor voiced buckets.
+    return 0.06 + (voiced * 5.2);
+  });
+  const localStartSeconds = startIndex * bucketSeconds;
+  const localSpanSeconds = (endIndex - startIndex + 1) * bucketSeconds;
+  const normalizedMap = (fraction) => {
+    const mapped = mapWaveformFractionToTime(weights, bucketSeconds, localStartSeconds, fraction);
+    return Math.min(spanEnd, Math.max(spanStart, mapped));
+  };
+
+  const windows = [];
+  for (let i = 0; i < wordCount; i += 1) {
+    const startRatio = i / wordCount;
+    const endRatio = (i + 1) / wordCount;
+    const mappedStart = normalizedMap(startRatio);
+    const mappedEnd = normalizedMap(endRatio);
+    const fallbackStart = spanStart + ((spanEnd - spanStart) * startRatio);
+    const fallbackEnd = spanStart + ((spanEnd - spanStart) * endRatio);
+    const start = Number.isFinite(mappedStart) ? mappedStart : fallbackStart;
+    const end = Number.isFinite(mappedEnd) ? Math.max(start + 0.04, mappedEnd) : Math.max(start + 0.04, fallbackEnd);
+    windows.push({ start, end });
+  }
+  if (!windows.length) return null;
+  // Ensure final word still reaches near segment end so tail alignment doesn't regress.
+  windows[windows.length - 1].end = Math.max(windows[windows.length - 1].end, spanEnd - 0.02);
+  return windows;
 }
 
 async function getSummaryPreview(recordingId, options = {}) {
@@ -530,7 +996,7 @@ async function queueTranscription() {
     const response = await fetch(`${API_BASE}/api/v1/recordings/${recordingId}/transcribe`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: "{}"
+      body: JSON.stringify({ identifySpeakers: identifyVoicesEnabled })
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || "Failed queueing job");
@@ -566,7 +1032,7 @@ function enqueueRecordingTask(recordingId, label, taskFn) {
   updateRecordingUiState(recordingId, {
     queuedTasks: (state.queuedTasks || 0) + 1
   });
-  loadRecordings();
+  loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
 
   const run = async () => {
     const active = getRecordingUiState(recordingId);
@@ -574,13 +1040,13 @@ function enqueueRecordingTask(recordingId, label, taskFn) {
       activeTaskLabel: label,
       queuedTasks: Math.max(0, (active.queuedTasks || 1) - 1)
     });
-    loadRecordings();
+    loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
     try {
       return await taskFn();
     } finally {
       const end = getRecordingUiState(recordingId);
       updateRecordingUiState(recordingId, { activeTaskLabel: null, queuedTasks: end.queuedTasks || 0 });
-      loadRecordings();
+      loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
     }
   };
 
@@ -593,11 +1059,11 @@ function enqueueRecordingTask(recordingId, label, taskFn) {
   return next;
 }
 
-async function runTranscriptionFlow(recordingId) {
+async function runTranscriptionFlow(recordingId, options = {}) {
   const response = await fetch(`${API_BASE}/api/v1/recordings/${recordingId}/transcribe`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: "{}"
+    body: JSON.stringify({ identifySpeakers: identifyVoicesEnabled })
   });
   const isJson = response.headers.get("content-type")?.includes("application/json");
   const payload = isJson ? await response.json() : await response.text();
@@ -610,8 +1076,14 @@ async function runTranscriptionFlow(recordingId) {
   if (job.status !== "completed") {
     throw new Error(job.error || "Transcription job failed.");
   }
-  await loadRecordings();
-  if (autoSummarizeEnabled) {
+  try {
+    await ensureCaptionAnchorsPersisted(recordingId);
+  } catch (_error) {
+    // Caption anchor persistence is best-effort.
+  }
+  await loadRecordings({ preserveScroll: true });
+  const summaryMode = options.summaryMode || "auto";
+  if (summaryMode === "always" || (summaryMode !== "never" && autoSummarizeEnabled)) {
     await runSummaryFlow(recordingId, { forceCreate: true });
   }
 }
@@ -622,7 +1094,7 @@ async function runSummaryFlow(recordingId, options = {}) {
     forceRefresh: Boolean(options.forceRefresh)
   });
   updateRecordingUiState(recordingId, { summaryMarkdown: markdown, showSummary: true });
-  await loadRecordings();
+  await loadRecordings({ preserveScroll: true });
   return markdown;
 }
 
@@ -801,25 +1273,105 @@ function setActiveTab(tabName) {
   localStorage.setItem(TAB_KEY, tabName);
 }
 
-async function loadRecordings() {
-  if (!recordingsListEl) return;
-  recordingsListEl.textContent = "Loading recordings...";
+function buildRecordingsUrl(limit, offset, queryText) {
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  params.set("offset", String(offset));
+  if (queryText) params.set("q", queryText);
+  return `${API_BASE}/api/v1/recordings?${params.toString()}`;
+}
+
+function shouldLoadMoreCloud() {
+  if (cloudLoading || !cloudHasMore) return false;
+  const doc = document.documentElement;
+  const remaining = doc.scrollHeight - (window.scrollY + window.innerHeight);
+  return remaining <= SCROLL_LOAD_THRESHOLD_PX;
+}
+
+async function fetchCloudRecordings({ reset = false, append = false } = {}) {
+  if (cloudLoading) return;
+  cloudLoading = true;
   try {
-    const response = await fetch(`${API_BASE}/api/v1/recordings?limit=50`, { cache: "no-store" });
+    if (reset) {
+      cloudOffset = 0;
+      cloudHasMore = true;
+      cloudRecordings = [];
+    }
+    const offset = append ? cloudOffset : 0;
+    const response = await fetch(buildRecordingsUrl(CLOUD_PAGE_SIZE, offset, cloudQuery), { cache: "no-store" });
     const isJson = response.headers.get("content-type")?.includes("application/json");
     const payload = isJson ? await response.json() : await response.text();
     if (!response.ok) {
       const message = typeof payload === "string" ? payload : payload.error;
       throw new Error(message || `Failed loading recordings (${response.status})`);
     }
-    const data = payload;
+    const rows = Array.isArray(payload) ? payload : (Array.isArray(payload.recordings) ? payload.recordings : []);
+    const hasMore = Boolean(payload?.pagination?.hasMore) || rows.length === CLOUD_PAGE_SIZE;
+    if (append) {
+      const merged = [...cloudRecordings, ...rows];
+      const seen = new Set();
+      cloudRecordings = merged.filter((row) => {
+        if (!row?.id || seen.has(row.id)) return false;
+        seen.add(row.id);
+        return true;
+      });
+    } else {
+      cloudRecordings = rows;
+    }
+    cloudOffset = append ? (cloudOffset + rows.length) : rows.length;
+    cloudHasMore = hasMore;
+  } finally {
+    cloudLoading = false;
+  }
+}
+
+function queueRecordingsViewportRefresh() {
+  if (recordingsScrollTicking) return;
+  recordingsScrollTicking = true;
+  requestAnimationFrame(async () => {
+    recordingsScrollTicking = false;
+    if (shouldLoadMoreCloud()) {
+      await loadRecordings({ appendCloud: true, silent: true });
+    }
+  });
+}
+
+async function loadRecordings(options = {}) {
+  const {
+    refreshCloud = true,
+    appendCloud = false,
+    silent = false,
+    preserveScroll = false
+  } = options;
+  if (!recordingsListEl) return;
+  const restoreY = preserveScroll ? window.scrollY : null;
+  try {
+    transcriptWordRegistry.clear();
+    if (!silent && !recordingsListEl.children.length) {
+      recordingsListEl.innerHTML = "";
+      for (let i = 0; i < 3; i += 1) {
+        const placeholder = document.createElement("div");
+        placeholder.className = "recordings-skeleton";
+        recordingsListEl.appendChild(placeholder);
+      }
+    }
+
+    if (refreshCloud) {
+      await fetchCloudRecordings({ reset: !appendCloud, append: appendCloud });
+    }
 
     recordingsListEl.innerHTML = "";
-    const localItems = Array.from(localRecordings.values()).sort(
+    const listTarget = document.createDocumentFragment();
+    const localItems = Array.from(localRecordings.values())
+      .filter((recording) => {
+        if (!cloudQuery) return true;
+        return String(recording.title || "").toLowerCase().includes(cloudQuery.toLowerCase());
+      })
+      .sort(
       (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
     );
-    const cloudItems = Array.isArray(data) ? data : [];
-    const combined = [...localItems, ...cloudItems];
+    const cloudItems = cloudRecordings;
+    const combined = [...localItems, ...cloudRecordings];
 
     if (!combined.length) {
       recordingsListEl.textContent = "No recordings yet.";
@@ -840,8 +1392,10 @@ async function loadRecordings() {
       const badges = document.createElement("div");
       badges.className = "recording-actions";
       const badge = document.createElement("span");
-      badge.className = `badge ${recording.uploadStatus === "uploading" ? "badge-uploading" : "badge-local"}`;
-      badge.textContent = recording.uploadStatus === "uploading" ? "Uploading" : "\uD83C\uDFE0 Local";
+      badge.className = recording.uploadStatus === "uploading"
+        ? "badge badge-uploading"
+        : "status-icon status-local";
+      badge.textContent = recording.uploadStatus === "uploading" ? "Uploading" : "\uD83C\uDFE0";
       badges.appendChild(badge);
 
       const actions = document.createElement("div");
@@ -875,9 +1429,60 @@ async function loadRecordings() {
         if (!recording.blob) return;
         markLocalRecording(recording.id, { uploadStatus: "uploading" });
         loadRecordings();
-        uploadRecording(recording.blob, recording.title, recording.id);
+        uploadRecording(
+          recording.blob,
+          recording.title,
+          recording.id,
+          recording.durationSeconds || 0,
+          recording.captionAnchors || []
+        );
       });
       actions.appendChild(uploadBtn);
+
+      const removeDeadAirLocalBtn = document.createElement("button");
+      removeDeadAirLocalBtn.type = "button";
+      removeDeadAirLocalBtn.textContent = "Remove Dead Air";
+      removeDeadAirLocalBtn.disabled = recording.uploadStatus === "uploading";
+      removeDeadAirLocalBtn.addEventListener("click", async () => {
+        try {
+          const result = await enqueueRecordingTask(recording.id, "Removing dead air", async () => (
+            runDeadAirRemovalFlow(recording)
+          ));
+          alert(`Created ${result.recordingId}. Removed ${result.removedSeconds.toFixed(1)}s of silence.`);
+        } catch (error) {
+          alert(`Dead-air removal failed: ${error.message}`);
+        }
+      });
+      actions.appendChild(removeDeadAirLocalBtn);
+
+      const exportCcLocalBtn = document.createElement("button");
+      exportCcLocalBtn.type = "button";
+      exportCcLocalBtn.textContent = "CC";
+      exportCcLocalBtn.className = "icon-action-btn";
+      exportCcLocalBtn.title = "Download captions (.srt)";
+      exportCcLocalBtn.setAttribute("aria-label", "Download captions");
+      exportCcLocalBtn.addEventListener("click", async () => {
+        const anchors = (Array.isArray(recording.captionAnchors) ? recording.captionAnchors : [])
+          .map((entry) => ({ text: String(entry?.text || "").trim(), at: Number(entry?.at) }))
+          .filter((entry) => entry.text && Number.isFinite(entry.at) && entry.at >= 0);
+        if (!anchors.length) {
+          const synthesized = getCaptionAnchorsFromSentenceAnchors(recording);
+          if (!synthesized.length) {
+            alert("No CC data is available for this recording yet.");
+            return;
+          }
+          const srtFallback = buildSrtFromAnchors(synthesized, recording.durationSeconds || 0);
+          downloadTextFile(`${sanitizeFilename(recording.title)}-captions.srt`, srtFallback, "application/x-subrip;charset=utf-8");
+          return;
+        }
+        const srt = buildSrtFromAnchors(anchors, recording.durationSeconds || 0);
+        if (!srt) {
+          alert("Unable to build captions file.");
+          return;
+        }
+        downloadTextFile(`${sanitizeFilename(recording.title)}-captions.srt`, srt, "application/x-subrip;charset=utf-8");
+      });
+      actions.appendChild(exportCcLocalBtn);
 
       const deleteLocalBtn = document.createElement("button");
       deleteLocalBtn.type = "button";
@@ -890,6 +1495,8 @@ async function loadRecordings() {
         if (recording.downloadUrl) {
           URL.revokeObjectURL(recording.downloadUrl);
         }
+        releasePlayback(recording.id);
+        playbackLoaders.delete(recording.id);
         localRecordings.delete(recording.id);
         loadRecordings();
       });
@@ -898,6 +1505,13 @@ async function loadRecordings() {
       item.appendChild(title);
       item.appendChild(meta);
       item.appendChild(badges);
+      if (recording.blob) {
+        const localLoader = async () => recording.blob;
+        localLoader.durationHint = Number(recording.durationSeconds) || 0;
+        playbackLoaders.set(recording.id, localLoader);
+        item.appendChild(createPlaybackSection(recording.id, localLoader));
+        preloadPlaybackForRecording(recording.id);
+      }
       if (recording.uploadStatus === "uploading") {
         item.appendChild(buildLoadingBar("Uploading..."));
       }
@@ -905,7 +1519,7 @@ async function loadRecordings() {
         item.appendChild(buildLoadingBar("Downloading..."));
       }
       item.appendChild(actions);
-      recordingsListEl.appendChild(item);
+      listTarget.appendChild(item);
     });
 
     cloudItems.forEach((recording) => {
@@ -921,71 +1535,20 @@ async function loadRecordings() {
       meta.textContent = `${recording.id} - ${recording.status} - ${formatTimestamp(recording.createdAt)}`;
 
       const badge = document.createElement("span");
-      badge.className = "badge badge-cloud";
-      badge.textContent = "\u2601\uFE0F Cloud";
+      badge.className = "status-icon status-cloud";
+      badge.textContent = "\u2601\uFE0F";
 
       const actions = document.createElement("div");
       actions.className = "recording-actions";
       actions.appendChild(badge);
 
-      const previewSelect = document.createElement("select");
-      const defaultOption = document.createElement("option");
-      defaultOption.value = "";
-      defaultOption.textContent = "Preview transcript...";
-      previewSelect.appendChild(defaultOption);
-
-      const transcriptOption = document.createElement("option");
-      transcriptOption.value = "transcript";
-      transcriptOption.textContent = "Transcription";
-      previewSelect.appendChild(transcriptOption);
-
-      const summaryOption = document.createElement("option");
-      summaryOption.value = "summary";
-      summaryOption.textContent = "Summarized";
-      previewSelect.appendChild(summaryOption);
-
-      const hideOption = document.createElement("option");
-      hideOption.value = "none";
-      hideOption.textContent = "Hide preview";
-      previewSelect.appendChild(hideOption);
-
-      actions.appendChild(previewSelect);
-
       if (recording.metadata?.audio?.fileName) {
-        const playBtn = document.createElement("button");
-        playBtn.type = "button";
-        playBtn.textContent = "Play audio";
-        playBtn.disabled = uiState.playbackLoading;
-        playBtn.addEventListener("click", async () => {
-          if (uiState.playbackUrl) {
-            const nextHidden = !uiState.showPlayback;
-            updateRecordingUiState(recording.id, { showPlayback: nextHidden });
-            loadRecordings();
-            return;
-          }
-
-          updateRecordingUiState(recording.id, { playbackLoading: true });
-          loadRecordings();
-          try {
-            const blob = await fetchRecordingAudioBlob(recording.id);
-            const playbackUrl = URL.createObjectURL(blob);
-            updateRecordingUiState(recording.id, {
-              playbackUrl,
-              showPlayback: true,
-              playbackLoading: false
-            });
-          } catch (error) {
-            alert(`Playback failed: ${error.message}`);
-            updateRecordingUiState(recording.id, { playbackLoading: false });
-          } finally {
-            loadRecordings();
-          }
-        });
-        actions.appendChild(playBtn);
-
         const downloadBtn = document.createElement("button");
         downloadBtn.type = "button";
-        downloadBtn.textContent = "Download audio";
+        downloadBtn.textContent = "\u2B07\uFE0F";
+        downloadBtn.className = "icon-action-btn";
+        downloadBtn.title = "Download audio";
+        downloadBtn.setAttribute("aria-label", "Download audio");
         downloadBtn.addEventListener("click", async () => {
           updateRecordingUiState(recording.id, { downloading: true });
           loadRecordings();
@@ -1007,42 +1570,36 @@ async function loadRecordings() {
           }
         });
         actions.appendChild(downloadBtn);
+
+        const downloadCcBtn = document.createElement("button");
+        downloadCcBtn.type = "button";
+        downloadCcBtn.textContent = "CC";
+        downloadCcBtn.className = "icon-action-btn";
+        downloadCcBtn.title = "Download captions (.srt)";
+        downloadCcBtn.setAttribute("aria-label", "Download captions");
+        downloadCcBtn.addEventListener("click", async () => {
+          const anchors = await resolveCaptionAnchorsForExport(recording);
+          if (!anchors.length) {
+            alert("No CC data is available for this recording yet.");
+            return;
+          }
+          const durationHint = getRecordingDurationHint(recording);
+          const srt = buildSrtFromAnchors(anchors, durationHint);
+          if (!srt) {
+            alert("Unable to build captions file.");
+            return;
+          }
+          downloadTextFile(`${sanitizeFilename(recording.title)}-captions.srt`, srt, "application/x-subrip;charset=utf-8");
+        });
+        actions.appendChild(downloadCcBtn);
       }
-
-      const transcribeBtn = document.createElement("button");
-      transcribeBtn.type = "button";
-      transcribeBtn.textContent = "Transcribe";
-      transcribeBtn.disabled = Boolean(uiState.activeTaskLabel);
-      transcribeBtn.addEventListener("click", async () => {
-        try {
-          await enqueueRecordingTask(recording.id, "Transcribing audio", async () => {
-            await runTranscriptionFlow(recording.id);
-          });
-        } catch (error) {
-          alert(`Transcription failed: ${error.message}`);
-        }
-      });
-      actions.appendChild(transcribeBtn);
-
-      const summarizeBtn = document.createElement("button");
-      summarizeBtn.type = "button";
-      summarizeBtn.textContent = "Summarize";
-      summarizeBtn.disabled = Boolean(uiState.activeTaskLabel);
-      summarizeBtn.addEventListener("click", async () => {
-        try {
-          await enqueueRecordingTask(recording.id, "Generating AI summary", async () => {
-            await runSummaryFlow(recording.id, { forceCreate: true, forceRefresh: true });
-          });
-        } catch (error) {
-          alert(`Summary failed: ${error.message}`);
-        }
-      });
-      actions.appendChild(summarizeBtn);
-
 
       const deleteCloudBtn = document.createElement("button");
       deleteCloudBtn.type = "button";
-      deleteCloudBtn.textContent = "Delete cloud";
+      deleteCloudBtn.textContent = "\uD83D\uDDD1\uFE0F";
+      deleteCloudBtn.className = "icon-action-btn";
+      deleteCloudBtn.title = "Delete cloud";
+      deleteCloudBtn.setAttribute("aria-label", "Delete cloud");
       deleteCloudBtn.addEventListener("click", async () => {
         const proceed = confirm(
           `Delete cloud recording "${recording.title}"?\n\nWarning: This permanently removes audio, transcript metadata, and related jobs/summaries.`
@@ -1060,8 +1617,8 @@ async function loadRecordings() {
             const message = typeof payload === "string" ? payload : payload.error;
             throw new Error(message || `Delete failed (${response.status})`);
           }
-          const playbackUrl = getRecordingUiState(recording.id).playbackUrl;
-          if (playbackUrl) URL.revokeObjectURL(playbackUrl);
+          releasePlayback(recording.id);
+          playbackLoaders.delete(recording.id);
           recordingUiState.delete(recording.id);
           loadRecordings();
         } catch (error) {
@@ -1072,29 +1629,311 @@ async function loadRecordings() {
       });
       actions.appendChild(deleteCloudBtn);
 
-      const preview = document.createElement("div");
-      preview.className = "recording-preview";
-      preview.hidden = true;
-      const previewTitle = document.createElement("div");
-      previewTitle.textContent = "Transcript preview";
-      const previewBodyText = document.createElement("pre");
-      previewBodyText.textContent = "";
-      const previewBodyMarkdown = document.createElement("div");
-      previewBodyMarkdown.className = "markdown-body";
-      previewBodyMarkdown.hidden = true;
+      if (recording.metadata?.audio?.fileName) {
+        const removeDeadAirBtn = document.createElement("button");
+        removeDeadAirBtn.type = "button";
+        removeDeadAirBtn.textContent = "\u2702\uFE0F";
+        removeDeadAirBtn.className = "icon-action-btn";
+        removeDeadAirBtn.title = `Remove dead air (>= ${deadAirThresholdSeconds.toFixed(1)}s)`;
+        removeDeadAirBtn.setAttribute("aria-label", "Remove dead air");
+        removeDeadAirBtn.disabled = Boolean(uiState.activeTaskLabel);
+        removeDeadAirBtn.addEventListener("click", async () => {
+          try {
+            const result = await enqueueRecordingTask(recording.id, "Removing dead air", async () => (
+              runDeadAirRemovalFlow(recording)
+            ));
+            alert(`Created ${result.recordingId}. Removed ${result.removedSeconds.toFixed(1)}s of silence.`);
+          } catch (error) {
+            alert(`Dead-air removal failed: ${error.message}`);
+          }
+        });
+        actions.appendChild(removeDeadAirBtn);
+      }
+
+      const transcriptSection = document.createElement("div");
+      transcriptSection.className = "recording-preview";
+      const transcriptHeader = document.createElement("div");
+      transcriptHeader.className = "recording-section-header";
+      const transcribeBtn = document.createElement("button");
+      transcribeBtn.type = "button";
+      transcribeBtn.textContent = "\u21BB";
+      transcribeBtn.className = "section-refresh-btn";
+      transcribeBtn.title = "Re-transcribe";
+      transcribeBtn.setAttribute("aria-label", "Re-transcribe");
+      transcribeBtn.disabled = Boolean(uiState.activeTaskLabel);
+      transcribeBtn.addEventListener("click", async () => {
+        try {
+          await enqueueRecordingTask(recording.id, "Transcribing audio", async () => {
+            await runTranscriptionFlow(recording.id);
+          });
+        } catch (error) {
+          alert(`Transcription failed: ${error.message}`);
+        }
+      });
+      const transcriptToggle = document.createElement("button");
+      transcriptToggle.type = "button";
+      transcriptToggle.className = "toggle-button prominent-toggle section-main-btn";
+      const transcriptExpanded = Boolean(uiState.showTranscript);
+      transcriptToggle.textContent = `${transcriptExpanded ? "\u25BE" : "\u25B8"} Transcript`;
+      const transcriptBody = document.createElement("div");
+      transcriptBody.hidden = !transcriptExpanded;
+      const transcriptText = document.createElement("pre");
+      const transcriptWords = document.createElement("div");
+      transcriptWords.className = "timed-words";
+      transcriptWords.hidden = true;
+      const timedWords = buildTimedWords(recording);
+      const sentenceAnchors = buildSentenceAnchors(recording);
+      const sentenceTimeline = buildSentenceWordTimeline(sentenceAnchors);
+      const transcriptWordTotal = String(recording.metadata?.transcript?.text || "")
+        .split(/\s+/)
+        .filter(Boolean)
+        .length;
+      const speechEndHintSeconds = getSpeechEndHint(sentenceAnchors, Number(getRecordingDurationHint(recording)) || 0);
+      const segments = Array.isArray(recording.metadata?.transcript?.segments) ? recording.metadata.transcript.segments : [];
+      const speakerLabels = { ...(recording.metadata?.speakers?.labels || {}) };
+      if (recording.metadata?.transcriptionError?.message) {
+        transcriptText.textContent = `Transcription failed: ${recording.metadata.transcriptionError.message}`;
+      } else if (segments.length) {
+        transcriptText.hidden = true;
+      } else if (recording.metadata?.transcript?.text) {
+        transcriptText.textContent = recording.metadata.transcript.text;
+      } else {
+        transcriptText.textContent = "No transcript yet. Expand to generate transcription.";
+      }
+
+      if (!recording.metadata?.transcriptionError?.message && recording.metadata?.transcript?.text && !segments.length) {
+        transcriptWords.hidden = false;
+        transcriptText.hidden = true;
+        const transcriptWordTokens = String(recording.metadata?.transcript?.text || "").split(/(\s+)/);
+        const transcriptWordCount = transcriptWordTokens.filter((token) => token && token.trim()).length;
+        const durationHintSeconds = Math.max(
+          0,
+          speechEndHintSeconds || 0
+        );
+        let timedIndex = 0;
+        let fallbackWordIndex = 0;
+        transcriptWordTokens.forEach((token) => {
+          if (!token) return;
+          if (!token.trim()) {
+            transcriptWords.appendChild(document.createTextNode(token));
+            return;
+          }
+          const cleanToken = cleanWordToken(token);
+          const expectedStart = transcriptWordCount > 0 && durationHintSeconds > 0
+            ? (durationHintSeconds * (fallbackWordIndex / transcriptWordCount))
+            : NaN;
+          const timedMatch = findBestTimedWordMatch({
+            cleanToken,
+            expectedStart,
+            windowStart: 0,
+            windowEnd: durationHintSeconds || NaN,
+            timedWords,
+            startIndex: timedIndex,
+            lookahead: 56
+          });
+          let matched = timedMatch.match;
+          timedIndex = timedMatch.nextIndex;
+          if (!matched) {
+            for (let i = timedIndex; i < sentenceTimeline.length; i += 1) {
+              const candidate = sentenceTimeline[i];
+              if (candidate.cleanWord === cleanToken) {
+                matched = candidate;
+                timedIndex = i + 1;
+                break;
+              }
+            }
+          }
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "timed-word";
+          btn.textContent = token;
+          const fallbackStart = expectedStart;
+          const seekStart = matched && Number.isFinite(matched.start)
+            ? matched.start
+            : fallbackStart;
+          const matchedEnd = matched && Number.isFinite(matched.end)
+            ? matched.end
+            : NaN;
+          const seekEnd = Number.isFinite(matchedEnd)
+            ? Math.min(matchedEnd, seekStart + 0.32)
+            : (Number.isFinite(seekStart) ? (seekStart + 0.22) : NaN);
+          fallbackWordIndex += 1;
+          if (Number.isFinite(seekStart)) {
+            btn.title = `${formatDuration(seekStart * 1000)}`;
+            btn.addEventListener("click", async () => {
+              try {
+                await seekRecordingToTime(recording.id, seekStart);
+              } catch (error) {
+                alert(`Jump failed: ${error.message}`);
+              }
+            });
+            registerTranscriptWord(recording.id, btn, seekStart, seekEnd);
+          } else {
+            btn.disabled = true;
+          }
+          transcriptWords.appendChild(btn);
+        });
+      }
+
+      const speakerEditor = document.createElement("div");
+      speakerEditor.className = "recording-actions";
+      speakerEditor.hidden = !segments.length;
+      const uniqueSpeakerIds = Array.from(new Set(segments.map((seg) => seg.speakerId).filter(Boolean)));
+      uniqueSpeakerIds.forEach((speakerId) => {
+        if (!speakerLabels[speakerId]) speakerLabels[speakerId] = `Person ${uniqueSpeakerIds.indexOf(speakerId) + 1}`;
+        const wrap = document.createElement("label");
+        wrap.className = "speaker-label-editor";
+        wrap.style.borderColor = getSpeakerColor(speakerId);
+        const chip = document.createElement("span");
+        chip.className = "speaker-chip";
+        chip.style.backgroundColor = getSpeakerColor(speakerId);
+        chip.textContent = speakerId;
+        const input = document.createElement("input");
+        input.value = speakerLabels[speakerId];
+        input.addEventListener("input", () => {
+          speakerLabels[speakerId] = input.value.trim() || speakerLabels[speakerId];
+        });
+        wrap.appendChild(chip);
+        wrap.appendChild(input);
+        speakerEditor.appendChild(wrap);
+      });
+      if (uniqueSpeakerIds.length) {
+        const saveLabelsBtn = document.createElement("button");
+        saveLabelsBtn.type = "button";
+        saveLabelsBtn.textContent = "Save Speaker Labels";
+        saveLabelsBtn.addEventListener("click", async () => {
+          try {
+            const response = await fetch(`${API_BASE}/api/v1/recordings/${recording.id}/speakers`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ labels: speakerLabels })
+            });
+            const isJson = response.headers.get("content-type")?.includes("application/json");
+            const payload = isJson ? await response.json() : await response.text();
+            if (!response.ok) {
+              const message = typeof payload === "string" ? payload : payload.error;
+              throw new Error(message || `Save failed (${response.status})`);
+            }
+            loadRecordings();
+          } catch (error) {
+            alert(`Save speaker labels failed: ${error.message}`);
+          }
+        });
+        speakerEditor.appendChild(saveLabelsBtn);
+      }
+
+      const transcriptSegmentsView = document.createElement("div");
+      transcriptSegmentsView.className = "transcript-segments";
+      transcriptSegmentsView.hidden = !segments.length;
+      let segmentTimelineIndex = 0;
+      let segmentTimedIndex = 0;
+      segments.forEach((seg) => {
+        const row = document.createElement("div");
+        row.className = "transcript-segment";
+        const chip = document.createElement("span");
+        chip.className = "speaker-chip";
+        chip.style.backgroundColor = getSpeakerColor(seg.speakerId);
+        chip.textContent = speakerLabels[seg.speakerId] || seg.speakerId;
+        const text = document.createElement("span");
+        const tokens = String(seg.text || "").split(/(\s+)/);
+        const segStart = Number(seg.start);
+        const segEndRaw = Number(seg.end);
+        const segWordCount = tokens.filter((token) => token && token.trim()).length;
+        const segEnd = segEndRaw;
+        let segWordIndex = 0;
+        tokens.forEach((token) => {
+          if (!token) return;
+          if (!token.trim()) {
+            text.appendChild(document.createTextNode(token));
+            return;
+          }
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "timed-word";
+          btn.textContent = token;
+          const cleanToken = cleanWordToken(token);
+          let timedMatched = null;
+          // Prefer same-token nearby match first.
+          for (let i = segmentTimedIndex; i < Math.min(timedWords.length, segmentTimedIndex + 12); i += 1) {
+            const candidate = timedWords[i];
+            if (cleanWordToken(candidate.word) === cleanToken && Number.isFinite(candidate.start)) {
+              timedMatched = candidate;
+              segmentTimedIndex = i + 1;
+              break;
+            }
+          }
+          // If no token match, use next timed word in sequence to preserve pause gaps.
+          if (!timedMatched) {
+            for (let i = segmentTimedIndex; i < timedWords.length; i += 1) {
+              const candidate = timedWords[i];
+              if (Number.isFinite(candidate.start)) {
+                timedMatched = candidate;
+                segmentTimedIndex = i + 1;
+                break;
+              }
+            }
+          }
+          let matched = null;
+          for (let i = segmentTimelineIndex; i < sentenceTimeline.length; i += 1) {
+            const candidate = sentenceTimeline[i];
+            if (candidate.cleanWord === cleanToken) {
+              matched = candidate;
+              segmentTimelineIndex = i + 1;
+              break;
+            }
+          }
+          const proportionalStart = Number.isFinite(segStart) && Number.isFinite(segEnd) && segWordCount > 0
+            ? (segStart + ((segEnd - segStart) * (segWordIndex / segWordCount)))
+            : NaN;
+          const proportionalEnd = Number.isFinite(segStart) && Number.isFinite(segEnd) && segWordCount > 0
+            ? (segStart + ((segEnd - segStart) * ((segWordIndex + 1) / segWordCount)))
+            : NaN;
+          const seekStart = timedMatched && Number.isFinite(timedMatched.start)
+            ? timedMatched.start
+            : (matched && Number.isFinite(matched.start)
+            ? matched.start
+            : proportionalStart);
+          const seekEnd = Number.isFinite(seekStart)
+            ? (timedMatched && Number.isFinite(timedMatched.end)
+                ? timedMatched.end
+                : (matched && Number.isFinite(matched.end)
+                ? matched.end
+                : (Number.isFinite(proportionalEnd) ? proportionalEnd : (seekStart + 0.22))))
+            : NaN;
+          segWordIndex += 1;
+          if (Number.isFinite(seekStart)) {
+            btn.title = `${formatDuration(seekStart * 1000)}`;
+            btn.addEventListener("click", async () => {
+              try {
+                await seekRecordingToTime(recording.id, seekStart);
+              } catch (error) {
+                alert(`Jump failed: ${error.message}`);
+              }
+            });
+            registerTranscriptWord(recording.id, btn, seekStart, seekEnd);
+          } else {
+            btn.disabled = true;
+          }
+          text.appendChild(btn);
+        });
+        row.appendChild(chip);
+        row.appendChild(text);
+        transcriptSegmentsView.appendChild(row);
+      });
       const transcriptActions = document.createElement("div");
       transcriptActions.className = "recording-actions";
-      transcriptActions.hidden = true;
       const transcriptMdBtn = document.createElement("button");
       transcriptMdBtn.type = "button";
-      transcriptMdBtn.textContent = "Transcript .md";
+      transcriptMdBtn.textContent = "Save Formatted";
+      transcriptMdBtn.disabled = !recording.metadata?.transcript?.text;
       transcriptMdBtn.addEventListener("click", () => {
         const markdown = buildTranscriptMarkdown(recording);
         downloadTextFile(`${sanitizeFilename(recording.title)}-transcript.md`, markdown, "text/markdown;charset=utf-8");
       });
       const transcriptCopyMdBtn = document.createElement("button");
       transcriptCopyMdBtn.type = "button";
-      transcriptCopyMdBtn.textContent = "Copy transcript (md)";
+      transcriptCopyMdBtn.textContent = "Copy Formatted";
+      transcriptCopyMdBtn.disabled = !recording.metadata?.transcript?.text;
       transcriptCopyMdBtn.addEventListener("click", async () => {
         try {
           await copyMarkdownFormatted(buildTranscriptMarkdown(recording));
@@ -1104,7 +1943,8 @@ async function loadRecordings() {
       });
       const transcriptCopyTextBtn = document.createElement("button");
       transcriptCopyTextBtn.type = "button";
-      transcriptCopyTextBtn.textContent = "Copy transcript (text)";
+      transcriptCopyTextBtn.textContent = "Copy RAW";
+      transcriptCopyTextBtn.disabled = !recording.metadata?.transcript?.text;
       transcriptCopyTextBtn.addEventListener("click", async () => {
         try {
           await copyText(recording.metadata?.transcript?.text || "");
@@ -1115,57 +1955,220 @@ async function loadRecordings() {
       transcriptActions.appendChild(transcriptMdBtn);
       transcriptActions.appendChild(transcriptCopyMdBtn);
       transcriptActions.appendChild(transcriptCopyTextBtn);
-      preview.appendChild(previewTitle);
-      preview.appendChild(previewBodyText);
-      preview.appendChild(previewBodyMarkdown);
-      preview.appendChild(transcriptActions);
-
-      previewSelect.addEventListener("change", async (event) => {
-        const value = event.target.value;
-        if (!value || value === "none") {
-          preview.hidden = true;
+      transcriptBody.appendChild(speakerEditor);
+      if (debugTranscriptTimestampsEnabled && sentenceAnchors.length) {
+        const sentenceRef = document.createElement("div");
+        sentenceRef.className = "sentence-reference";
+        sentenceAnchors.forEach((entry) => {
+          const row = document.createElement("div");
+          row.className = "sentence-reference-row";
+          row.textContent = `[${formatDuration(entry.start * 1000)}] ${entry.text}`;
+          sentenceRef.appendChild(row);
+        });
+        transcriptBody.appendChild(sentenceRef);
+      }
+      transcriptBody.appendChild(transcriptSegmentsView);
+      transcriptBody.appendChild(transcriptWords);
+      transcriptBody.appendChild(transcriptText);
+      transcriptBody.appendChild(transcriptActions);
+      transcriptHeader.appendChild(transcriptToggle);
+      transcriptHeader.appendChild(transcribeBtn);
+      transcriptSection.appendChild(transcriptHeader);
+      transcriptSection.appendChild(transcriptBody);
+      transcriptToggle.addEventListener("click", async () => {
+        const next = !transcriptBody.hidden;
+        const expanded = !next;
+        updateRecordingUiState(recording.id, { showTranscript: expanded });
+        transcriptBody.hidden = !expanded;
+        transcriptToggle.textContent = `${expanded ? "\u25BE" : "\u25B8"} Transcript`;
+        if (!expanded) return;
+        const refreshedState = getRecordingUiState(recording.id);
+        const transcriptionBusy = Boolean(refreshedState.activeTaskLabel)
+          || recording.status === "processing";
+        if (transcriptionBusy) {
           return;
         }
-
-        preview.hidden = false;
-        transcriptActions.hidden = true;
-        previewBodyText.hidden = false;
-        previewBodyMarkdown.hidden = true;
-        if (value === "transcript") {
-          previewTitle.textContent = "Transcription preview";
-          transcriptActions.hidden = false;
-          if (recording.metadata?.transcriptionError?.message) {
-            previewBodyText.textContent = `Transcription failed: ${recording.metadata.transcriptionError.message}`;
-          } else if (recording.metadata?.transcript?.text) {
-            previewBodyText.textContent = recording.metadata.transcript.text;
-          } else {
-            previewBodyText.textContent = "No transcript available yet. Click Transcribe first.";
+        if (!recording.metadata?.transcript?.text && !recording.metadata?.transcriptionError?.message) {
+          try {
+            await enqueueRecordingTask(recording.id, "Transcribing audio", async () => {
+              await runTranscriptionFlow(recording.id);
+            });
+          } catch (error) {
+            alert(`Transcription failed: ${error.message}`);
           }
-          return;
         }
+      });
 
-        previewTitle.textContent = "Summarized (AI)";
-        previewBodyText.hidden = true;
-        previewBodyMarkdown.hidden = false;
-        previewBodyMarkdown.innerHTML = "<p>Loading preview...</p>";
+      const tagsSection = document.createElement("div");
+      tagsSection.className = "tag-row";
+      const currentTags = Array.isArray(recording.metadata?.tags) ? [...recording.metadata.tags] : [];
+      currentTags.forEach((tag) => {
+        const chip = document.createElement("span");
+        chip.className = "tag-chip";
+        chip.textContent = tag;
+        tagsSection.appendChild(chip);
+      });
+      const tagsInput = document.createElement("input");
+      tagsInput.className = "tag-input";
+      tagsInput.placeholder = "Add tag";
+      const addTagBtn = document.createElement("button");
+      addTagBtn.type = "button";
+      addTagBtn.textContent = "Save Tags";
+      addTagBtn.addEventListener("click", async () => {
+        const inputTags = String(tagsInput.value || "")
+          .split(",")
+          .map((entry) => entry.trim())
+          .filter(Boolean);
+        const merged = Array.from(new Set([...currentTags, ...inputTags])).slice(0, 20);
         try {
-          const markdown = await enqueueRecordingTask(recording.id, "Generating AI summary", async () => (
-            runSummaryFlow(recording.id, { forceCreate: false, forceRefresh: false })
-          ));
-          previewBodyMarkdown.innerHTML = markdownToHtml(markdown);
+          const response = await fetch(`${API_BASE}/api/v1/recordings/${recording.id}/tags`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tags: merged })
+          });
+          const isJson = response.headers.get("content-type")?.includes("application/json");
+          const payload = isJson ? await response.json() : await response.text();
+          if (!response.ok) {
+            const message = typeof payload === "string" ? payload : payload.error;
+            throw new Error(message || `Save tags failed (${response.status})`);
+          }
+          loadRecordings();
         } catch (error) {
-          previewBodyMarkdown.innerHTML = `<p>Preview failed: ${escapeHtml(error.message)}</p>`;
+          alert(`Save tags failed: ${error.message}`);
+        }
+      });
+      tagsSection.appendChild(tagsInput);
+      tagsSection.appendChild(addTagBtn);
+      if (!currentTags.length) {
+        const hint = document.createElement("span");
+        hint.className = "recording-meta";
+        hint.textContent = "No tags yet.";
+        tagsSection.appendChild(hint);
+      }
+      transcriptBody.appendChild(tagsSection);
+
+      const summarySection = document.createElement("div");
+      summarySection.className = "recording-summary";
+      const summaryHeader = document.createElement("div");
+      summaryHeader.className = "recording-section-header";
+      const summarizeBtn = document.createElement("button");
+      summarizeBtn.type = "button";
+      summarizeBtn.textContent = "\u21BB";
+      summarizeBtn.className = "section-refresh-btn";
+      summarizeBtn.title = "Re-summarize";
+      summarizeBtn.setAttribute("aria-label", "Re-summarize");
+      summarizeBtn.disabled = Boolean(uiState.activeTaskLabel);
+      summarizeBtn.addEventListener("click", async () => {
+        try {
+          await enqueueRecordingTask(recording.id, "Generating AI summary", async () => {
+            await runSummaryFlow(recording.id, { forceCreate: true, forceRefresh: true });
+          });
+        } catch (error) {
+          alert(`Summary failed: ${error.message}`);
+        }
+      });
+      const summaryToggle = document.createElement("button");
+      summaryToggle.type = "button";
+      summaryToggle.className = "toggle-button prominent-toggle section-main-btn";
+      const summaryExpanded = Boolean(uiState.showSummary);
+      summaryToggle.textContent = `${summaryExpanded ? "\u25BE" : "\u25B8"} \u2728 AI Summary`;
+      const summaryBodyWrap = document.createElement("div");
+      summaryBodyWrap.hidden = !summaryExpanded;
+      const summaryWarn = document.createElement("div");
+      summaryWarn.className = "recording-meta";
+      summaryWarn.textContent = "Warning: AI summary may be incorrect. Review carefully.";
+      const summaryBody = document.createElement("div");
+      summaryBody.className = "markdown-body";
+      const summaryMarkdown = uiState.summaryMarkdown || summaryCache.get(recording.id) || "";
+      summaryBody.innerHTML = summaryMarkdown
+        ? markdownToHtml(summaryMarkdown)
+        : "<p>No summary yet. Expand to generate summary.</p>";
+      const summaryActions = document.createElement("div");
+      summaryActions.className = "recording-actions";
+
+      const downloadSummaryBtn = document.createElement("button");
+      downloadSummaryBtn.type = "button";
+      downloadSummaryBtn.textContent = "Summary .md";
+      downloadSummaryBtn.disabled = !summaryMarkdown;
+      downloadSummaryBtn.addEventListener("click", () => {
+        const md = buildSummaryMarkdown(recording, summaryMarkdown);
+        downloadTextFile(`${sanitizeFilename(recording.title)}-summary.md`, md, "text/markdown;charset=utf-8");
+      });
+      summaryActions.appendChild(downloadSummaryBtn);
+
+      const copySummaryMdBtn = document.createElement("button");
+      copySummaryMdBtn.type = "button";
+      copySummaryMdBtn.textContent = "Copy summary (md)";
+      copySummaryMdBtn.disabled = !summaryMarkdown;
+      copySummaryMdBtn.addEventListener("click", async () => {
+        try {
+          await copyMarkdownFormatted(buildSummaryMarkdown(recording, summaryMarkdown));
+        } catch (error) {
+          alert(`Copy failed: ${error.message}`);
+        }
+      });
+      summaryActions.appendChild(copySummaryMdBtn);
+
+      const copySummaryTextBtn = document.createElement("button");
+      copySummaryTextBtn.type = "button";
+      copySummaryTextBtn.textContent = "Copy summary (text)";
+      copySummaryTextBtn.disabled = !summaryMarkdown;
+      copySummaryTextBtn.addEventListener("click", async () => {
+        try {
+          await copyText(summaryMarkdown);
+        } catch (error) {
+          alert(`Copy failed: ${error.message}`);
+        }
+      });
+      summaryActions.appendChild(copySummaryTextBtn);
+
+      summaryBodyWrap.appendChild(summaryWarn);
+      summaryBodyWrap.appendChild(summaryBody);
+      summaryBodyWrap.appendChild(summaryActions);
+      summaryHeader.appendChild(summaryToggle);
+      summaryHeader.appendChild(summarizeBtn);
+      summarySection.appendChild(summaryHeader);
+      summarySection.appendChild(summaryBodyWrap);
+      summaryToggle.addEventListener("click", async () => {
+        const expanded = summaryBodyWrap.hidden;
+        summaryBodyWrap.hidden = !expanded;
+        summaryToggle.textContent = `${expanded ? "\u25BE" : "\u25B8"} \u2728 AI Summary`;
+        updateRecordingUiState(recording.id, { showSummary: expanded });
+        if (!expanded) return;
+        const hasSummary = Boolean(getRecordingUiState(recording.id).summaryMarkdown || summaryCache.get(recording.id));
+        if (!hasSummary) {
+          try {
+            await enqueueRecordingTask(recording.id, "Generating AI summary", async () => (
+              runSummaryFlow(recording.id, { forceCreate: false, forceRefresh: false })
+            ));
+          } catch (error) {
+            alert(`Summary failed: ${error.message}`);
+          }
         }
       });
 
       item.appendChild(title);
       item.appendChild(meta);
       item.appendChild(actions);
+      if (recording.metadata?.audio?.fileName) {
+        const durationHint = getRecordingDurationHint(recording);
+        const initialPeaks = getRecordingWaveformPeaks(recording);
+        const cloudLoader = () => fetchRecordingAudioBlob(recording.id);
+        cloudLoader.audioUrl = getRecordingAudioUrl(recording.id);
+        cloudLoader.durationHint = durationHint;
+        cloudLoader.initialPeaks = initialPeaks;
+        if (durationHint > 0 || initialPeaks.length) {
+          saveCachedPlaybackMeta(recording.id, {
+            ...(durationHint > 0 ? { durationSeconds: durationHint } : {}),
+            ...(initialPeaks.length ? { peaks: initialPeaks } : {})
+          });
+        }
+        playbackLoaders.set(recording.id, cloudLoader);
+        item.appendChild(createPlaybackSection(recording.id, cloudLoader));
+        preloadPlaybackForRecording(recording.id);
+      }
       if (uiState.downloading) {
         item.appendChild(buildLoadingBar("Downloading..."));
-      }
-      if (uiState.playbackLoading) {
-        item.appendChild(buildLoadingBar("Loading playback..."));
       }
       if (uiState.transcribing) {
         item.appendChild(buildLoadingBar("Transcribing..."));
@@ -1177,71 +2180,31 @@ async function loadRecordings() {
         const detail = uiState.queuedTasks ? `${uiState.queuedTasks} queued` : "";
         item.appendChild(buildLoadingBar(uiState.activeTaskLabel || "Queued for processing", detail));
       }
-      if (uiState.playbackUrl && uiState.showPlayback) {
-        const cloudPlayback = document.createElement("audio");
-        cloudPlayback.controls = true;
-        cloudPlayback.src = uiState.playbackUrl;
-        cloudPlayback.preload = "metadata";
-        item.appendChild(cloudPlayback);
-      }
-      const summaryMarkdown = uiState.summaryMarkdown || summaryCache.get(recording.id) || "";
-      const summaryPanel = document.createElement("div");
-      summaryPanel.className = "recording-summary";
-      summaryPanel.hidden = !summaryMarkdown;
-      if (summaryMarkdown) {
-        const summaryTitle = document.createElement("div");
-        summaryTitle.textContent = "✨ AI Summary";
-        const summaryWarn = document.createElement("div");
-        summaryWarn.className = "recording-meta";
-        summaryWarn.textContent = "Warning: AI summary may be incorrect. Review carefully.";
-        const summaryBody = document.createElement("div");
-        summaryBody.className = "markdown-body";
-        summaryBody.innerHTML = markdownToHtml(summaryMarkdown);
-        const summaryActions = document.createElement("div");
-        summaryActions.className = "recording-actions";
-
-        const downloadSummaryBtn = document.createElement("button");
-        downloadSummaryBtn.type = "button";
-        downloadSummaryBtn.textContent = "Summary .md";
-        downloadSummaryBtn.addEventListener("click", () => {
-          const md = buildSummaryMarkdown(recording, summaryMarkdown);
-          downloadTextFile(`${sanitizeFilename(recording.title)}-summary.md`, md, "text/markdown;charset=utf-8");
-        });
-        summaryActions.appendChild(downloadSummaryBtn);
-
-        const copySummaryMdBtn = document.createElement("button");
-        copySummaryMdBtn.type = "button";
-        copySummaryMdBtn.textContent = "Copy summary (md)";
-        copySummaryMdBtn.addEventListener("click", async () => {
-          try {
-            await copyMarkdownFormatted(buildSummaryMarkdown(recording, summaryMarkdown));
-          } catch (error) {
-            alert(`Copy failed: ${error.message}`);
-          }
-        });
-        summaryActions.appendChild(copySummaryMdBtn);
-
-        const copySummaryTextBtn = document.createElement("button");
-        copySummaryTextBtn.type = "button";
-        copySummaryTextBtn.textContent = "Copy summary (text)";
-        copySummaryTextBtn.addEventListener("click", async () => {
-          try {
-            await copyText(summaryMarkdown);
-          } catch (error) {
-            alert(`Copy failed: ${error.message}`);
-          }
-        });
-        summaryActions.appendChild(copySummaryTextBtn);
-
-        summaryPanel.appendChild(summaryTitle);
-        summaryPanel.appendChild(summaryWarn);
-        summaryPanel.appendChild(summaryBody);
-        summaryPanel.appendChild(summaryActions);
-      }
-      item.appendChild(summaryPanel);
-      item.appendChild(preview);
-      recordingsListEl.appendChild(item);
+      item.appendChild(transcriptSection);
+      item.appendChild(summarySection);
+      listTarget.appendChild(item);
     });
+
+    if (cloudLoading) {
+      for (let i = 0; i < 2; i += 1) {
+        const placeholder = document.createElement("div");
+        placeholder.className = "recordings-skeleton";
+        listTarget.appendChild(placeholder);
+      }
+    }
+
+    recordingsListEl.replaceChildren(listTarget);
+    if (restoreY !== null) {
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: restoreY });
+      });
+    }
+
+    if (shouldLoadMoreCloud()) {
+      loadRecordings({ appendCloud: true, silent: true }).catch(() => {
+        // Ignore auto-pagination errors here; manual refresh can retry.
+      });
+    }
   } catch (error) {
     recordingsListEl.textContent = `Error loading recordings: ${error.message}`;
   }
@@ -1252,10 +2215,20 @@ let activeStream = null;
 let recordedChunks = [];
 let recordingTimer = null;
 let recordingStartedAt = null;
+let recordingElapsedMs = 0;
 let downloadUrl = null;
 let audioContext = null;
 let analyserNode = null;
 let animationFrame = null;
+let stopActionOverride = null;
+let pendingStopActionOverride = null;
+let saveHoldTimer = null;
+let saveHoldArmed = false;
+let liveCaptionRecognition = null;
+let liveCaptionFinalText = "";
+let liveCaptionInterimText = "";
+let liveCaptionShouldRestart = false;
+let liveCaptionAnchors = [];
 
 function pickRecordingMimeType() {
   const options = [
@@ -1268,13 +2241,165 @@ function pickRecordingMimeType() {
   return options.find((type) => MediaRecorder.isTypeSupported(type)) || "";
 }
 
+function getSpeechRecognitionCtor() {
+  return window.SpeechRecognition || window.webkitSpeechRecognition || null;
+}
+
+function isLiveCaptionsSupported() {
+  return Boolean(getSpeechRecognitionCtor());
+}
+
+function setLiveCaptionsStatus(message) {
+  if (liveCaptionsStatusEl) {
+    liveCaptionsStatusEl.textContent = message;
+  }
+}
+
+function renderLiveCaptionsText() {
+  if (!liveCaptionsTextEl) return;
+  const finalText = String(liveCaptionFinalText || "").trim();
+  const interimText = String(liveCaptionInterimText || "").trim();
+  const joined = [finalText, interimText].filter(Boolean).join(finalText && interimText ? " " : "");
+  liveCaptionsTextEl.textContent = joined || "Captions will appear here while recording.";
+  liveCaptionsTextEl.scrollTop = liveCaptionsTextEl.scrollHeight;
+}
+
+function resetLiveCaptions() {
+  liveCaptionFinalText = "";
+  liveCaptionInterimText = "";
+  liveCaptionAnchors = [];
+  renderLiveCaptionsText();
+}
+
+function getCurrentRecordingElapsedSeconds() {
+  const activeMs = recordingStartedAt ? (Date.now() - recordingStartedAt) : 0;
+  const elapsedMs = Math.max(0, recordingElapsedMs + activeMs);
+  return elapsedMs / 1000;
+}
+
+function stopLiveCaptions(options = {}) {
+  const { keepFinal = true } = options;
+  liveCaptionShouldRestart = false;
+  if (keepFinal && String(liveCaptionInterimText || "").trim()) {
+    const interim = String(liveCaptionInterimText || "").trim();
+    liveCaptionFinalText = `${liveCaptionFinalText} ${interim}`.trim();
+    const elapsed = getCurrentRecordingElapsedSeconds();
+    const previous = liveCaptionAnchors[liveCaptionAnchors.length - 1];
+    if (!previous || previous.text !== interim) {
+      liveCaptionAnchors.push({
+        text: interim,
+        at: Number(elapsed.toFixed(3))
+      });
+    }
+  }
+  if (!keepFinal) {
+    liveCaptionFinalText = "";
+  }
+  liveCaptionInterimText = "";
+  if (liveCaptionRecognition) {
+    try {
+      liveCaptionRecognition.stop();
+    } catch (_error) {
+      // Ignore recognition stop errors.
+    }
+    liveCaptionRecognition = null;
+  }
+  renderLiveCaptionsText();
+}
+
+function startLiveCaptions() {
+  if (!liveCaptionsEnabled) {
+    setLiveCaptionsStatus("Live captions disabled in settings.");
+    return;
+  }
+  const RecognitionCtor = getSpeechRecognitionCtor();
+  if (!RecognitionCtor) {
+    setLiveCaptionsStatus("Live captions unavailable in this browser.");
+    return;
+  }
+  if (!mediaRecorder || mediaRecorder.state === "inactive") {
+    return;
+  }
+  if (liveCaptionRecognition) return;
+
+  const recognition = new RecognitionCtor();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.lang = navigator.language || "en-US";
+  liveCaptionShouldRestart = true;
+
+  recognition.onresult = (event) => {
+    let interim = "";
+    for (let i = event.resultIndex; i < event.results.length; i += 1) {
+      const text = String(event.results[i][0]?.transcript || "").trim();
+      if (!text) continue;
+      if (event.results[i].isFinal) {
+        liveCaptionFinalText = `${liveCaptionFinalText} ${text}`.trim();
+        const elapsed = getCurrentRecordingElapsedSeconds();
+        const previous = liveCaptionAnchors[liveCaptionAnchors.length - 1];
+        if (!previous || previous.text !== text) {
+          liveCaptionAnchors.push({
+            text,
+            at: Number(elapsed.toFixed(3))
+          });
+        }
+      } else {
+        interim = `${interim} ${text}`.trim();
+      }
+    }
+    liveCaptionInterimText = interim;
+    renderLiveCaptionsText();
+  };
+
+  recognition.onerror = (event) => {
+    const code = String(event?.error || "unknown");
+    if (code === "not-allowed" || code === "service-not-allowed") {
+      setLiveCaptionsStatus("Live captions permission denied.");
+      liveCaptionShouldRestart = false;
+      return;
+    }
+    if (code === "no-speech") {
+      setLiveCaptionsStatus("Live captions listening...");
+      return;
+    }
+    setLiveCaptionsStatus(`Live captions error: ${code}`);
+  };
+
+  recognition.onend = () => {
+    liveCaptionRecognition = null;
+    const isActivelyRecording = Boolean(mediaRecorder && mediaRecorder.state === "recording");
+    if (liveCaptionShouldRestart && isActivelyRecording) {
+      setTimeout(() => {
+        if (liveCaptionShouldRestart && mediaRecorder && mediaRecorder.state === "recording") {
+          startLiveCaptions();
+        }
+      }, 150);
+      return;
+    }
+    if (mediaRecorder && mediaRecorder.state === "paused") {
+      setLiveCaptionsStatus("Live captions paused.");
+    } else {
+      setLiveCaptionsStatus("Live captions stopped.");
+    }
+  };
+
+  try {
+    recognition.start();
+    liveCaptionRecognition = recognition;
+    setLiveCaptionsStatus("Live captions listening...");
+  } catch (_error) {
+    liveCaptionRecognition = null;
+    setLiveCaptionsStatus("Live captions failed to start.");
+  }
+}
+
 function setRecordingUiState(state) {
   if (!recordStatusEl) return;
   recordStatusEl.textContent = state.message;
   recordStartBtn.disabled = state.startDisabled;
   recordStopBtn.disabled = state.stopDisabled;
-  recordDownloadBtn.disabled = state.downloadDisabled;
   recordStartBtn.classList.toggle("is-recording", Boolean(state.isRecording));
+  recordStartBtn.classList.toggle("is-paused", Boolean(state.isPaused));
 }
 
 function formatDuration(ms) {
@@ -1284,10 +2409,241 @@ function formatDuration(ms) {
   return `${minutes}:${seconds}`;
 }
 
+function cleanWordToken(value) {
+  return String(value || "").replace(/^[^\w']+|[^\w']+$/g, "").toLowerCase();
+}
+
+function clearTranscriptWordRegistry(recordingId) {
+  if (!recordingId) return;
+  transcriptWordRegistry.delete(recordingId);
+}
+
+function registerTranscriptWord(recordingId, element, start, end) {
+  if (!recordingId || !element || !Number.isFinite(start)) return;
+  const list = transcriptWordRegistry.get(recordingId) || [];
+  list.push({
+    element,
+    start,
+    end: Number.isFinite(end) ? end : start + 0.35
+  });
+  transcriptWordRegistry.set(recordingId, list);
+}
+
+function syncActiveTranscriptWord(recordingId, currentSeconds) {
+  const entries = transcriptWordRegistry.get(recordingId);
+  if (!entries || !entries.length || !Number.isFinite(currentSeconds)) return;
+  const lastSpeechEnd = Math.max(...entries.map((entry) => Number(entry.end) || 0), 0);
+  if (lastSpeechEnd > 0 && currentSeconds > (lastSpeechEnd + 0.2)) {
+    entries.forEach((entry) => {
+      entry.element.classList.remove("is-active");
+    });
+    return;
+  }
+  let activeIndex = -1;
+  for (let i = 0; i < entries.length; i += 1) {
+    const entry = entries[i];
+    if (currentSeconds >= entry.start && currentSeconds < entry.end) {
+      activeIndex = i;
+      break;
+    }
+  }
+  entries.forEach((entry, index) => {
+    entry.element.classList.toggle("is-active", index === activeIndex);
+  });
+}
+
+function buildTimedWords(recording) {
+  const transcript = recording.metadata?.transcript || {};
+  const durationHint = Number(getRecordingDurationHint(recording));
+  if (Array.isArray(transcript.wordTimings) && transcript.wordTimings.length) {
+    return transcript.wordTimings
+      .map((entry) => ({
+        word: String(entry.word || "").trim(),
+        start: Number(entry.start),
+        end: Number(entry.end)
+      }))
+      .filter((entry) => entry.word && Number.isFinite(entry.start));
+  }
+
+  const segments = Array.isArray(transcript.providerSegments) ? transcript.providerSegments : [];
+  const inferred = [];
+  segments.forEach((segment) => {
+    const text = String(segment?.text || "").trim();
+    const start = Number(segment?.start);
+    const end = Number(segment?.end);
+    if (!text || !Number.isFinite(start) || !Number.isFinite(end) || end <= start) return;
+    const words = text.split(/\s+/).filter(Boolean);
+    if (!words.length) return;
+    const duration = end - start;
+    const windows = buildWaveformSpanWordWindows(recording, start, end, words.length, durationHint);
+    words.forEach((word, index) => {
+      const ratio = index / words.length;
+      const mapped = windows?.[index];
+      inferred.push({
+        word,
+        start: mapped?.start ?? (start + (duration * ratio)),
+        end: mapped?.end ?? (start + (duration * ((index + 1) / words.length)))
+      });
+    });
+  });
+  return inferred;
+}
+
+function buildSentenceAnchors(recording) {
+  const transcript = recording.metadata?.transcript || {};
+  const fromSegments = Array.isArray(transcript.segments) ? transcript.segments : [];
+  const fromProvider = Array.isArray(transcript.providerSegments) ? transcript.providerSegments : [];
+  const normalizedSegments = fromSegments
+    .map((entry) => ({
+      text: String(entry?.text || "").trim(),
+      start: Number(entry?.start),
+      end: Number(entry?.end)
+    }))
+    .filter((entry) => entry.text && Number.isFinite(entry.start) && Number.isFinite(entry.end) && entry.end > entry.start);
+  if (normalizedSegments.length) {
+    return normalizedSegments;
+  }
+  if (fromProvider.length) {
+    return fromProvider
+      .map((entry) => ({
+        text: String(entry?.text || "").trim(),
+        start: Number(entry?.start),
+        end: Number(entry?.end)
+      }))
+      .filter((entry) => entry.text && Number.isFinite(entry.start) && Number.isFinite(entry.end) && entry.end > entry.start);
+  }
+  const fromCaptions = getCaptionAnchors(recording);
+  if (fromCaptions.length) {
+    return fromCaptions;
+  }
+
+  const text = String(transcript.text || "").trim();
+  const durationHint = Number(getRecordingDurationHint(recording));
+  if (!text || !(Number.isFinite(durationHint) && durationHint > 0)) return [];
+  const weightedMap = getWaveformWeightedSpeechMap(recording, durationHint);
+  const speechWindow = getSpeechWindowFromWaveform(recording, durationHint) || { start: 0, end: durationHint };
+  const speechSpan = Math.max(0.2, speechWindow.end - speechWindow.start);
+  const sentences = text.split(/(?<=[.!?])\s+/).map((line) => line.trim()).filter(Boolean);
+  if (!sentences.length) return [];
+  const totalChars = Math.max(1, sentences.reduce((acc, line) => acc + line.length, 0));
+  let consumedChars = 0;
+  let cursor = speechWindow.start;
+  return sentences.map((line) => {
+    const lineChars = Math.max(1, line.length);
+    const startFraction = consumedChars / totalChars;
+    consumedChars += lineChars;
+    const endFraction = consumedChars / totalChars;
+    const mappedStart = weightedMap
+      ? weightedMap.mapFraction(startFraction)
+      : cursor;
+    const mappedEnd = weightedMap
+      ? weightedMap.mapFraction(endFraction)
+      : Math.min(speechWindow.end, cursor + Math.max(0.2, speechSpan * (lineChars / totalChars)));
+    const start = Number.isFinite(mappedStart) ? mappedStart : cursor;
+    const end = Number.isFinite(mappedEnd) ? Math.max(start + 0.2, mappedEnd) : (start + 0.2);
+    cursor = Math.min(speechWindow.end, end);
+    return { text: line, start, end };
+  });
+}
+
+function buildSentenceWordTimeline(anchors) {
+  const timeline = [];
+  anchors.forEach((anchor) => {
+    const words = String(anchor.text || "").split(/\s+/).filter(Boolean);
+    if (!words.length) return;
+    const span = Math.max(0.2, anchor.end - anchor.start);
+    words.forEach((word, index) => {
+      const start = anchor.start + (span * (index / words.length));
+      const end = anchor.start + (span * ((index + 1) / words.length));
+      timeline.push({
+        cleanWord: cleanWordToken(word),
+        start,
+        end
+      });
+    });
+  });
+  return timeline;
+}
+
+function getSpeechEndHint(sentenceAnchors, fallbackDurationSeconds = 0) {
+  if (Array.isArray(sentenceAnchors) && sentenceAnchors.length) {
+    const maxEnd = Math.max(...sentenceAnchors.map((entry) => Number(entry.end) || 0), 0);
+    if (maxEnd > 0) return maxEnd;
+  }
+  return Number.isFinite(fallbackDurationSeconds) ? Math.max(0, fallbackDurationSeconds) : 0;
+}
+
+function findBestTimedWordMatch({ cleanToken, expectedStart, windowStart, windowEnd, timedWords, startIndex = 0, lookahead = 48 }) {
+  if (!cleanToken || !Array.isArray(timedWords) || !timedWords.length) {
+    return { match: null, nextIndex: startIndex };
+  }
+  const from = Math.max(0, startIndex);
+  const to = Math.min(timedWords.length, from + Math.max(8, lookahead));
+  let best = null;
+  let bestIndex = from;
+  for (let i = from; i < to; i += 1) {
+    const candidate = timedWords[i];
+    if (cleanWordToken(candidate.word) !== cleanToken) continue;
+    const start = Number(candidate.start);
+    if (!Number.isFinite(start)) continue;
+    if (Number.isFinite(windowStart) && start < windowStart - 0.8) continue;
+    if (Number.isFinite(windowEnd) && start > windowEnd + 0.8) continue;
+    const expectedDelta = Number.isFinite(expectedStart) ? Math.abs(start - expectedStart) : 0;
+    const indexPenalty = (i - from) * 0.03;
+    const score = expectedDelta + indexPenalty;
+    if (!best || score < best.score) {
+      best = { score, entry: candidate, index: i };
+      bestIndex = i;
+    }
+  }
+  if (!best) {
+    return { match: null, nextIndex: startIndex };
+  }
+  return { match: best.entry, nextIndex: bestIndex + 1 };
+}
+
+async function seekRecordingToTime(recordingId, seconds) {
+  const loader = playbackLoaders.get(recordingId);
+  if (!loader) {
+    throw new Error("Playback unavailable.");
+  }
+  const controller = await ensurePlaybackAttached(recordingId, loader);
+  if (!controller.audio) return;
+  const target = Number(seconds);
+  if (Number.isFinite(target)) {
+    controller.audio.currentTime = Math.max(0, target - 1);
+  }
+  await controller.audio.play();
+}
+
 function updateRecordingTimer() {
-  if (!recordingStartedAt) return;
-  const elapsed = Date.now() - recordingStartedAt;
+  const activeMs = recordingStartedAt ? (Date.now() - recordingStartedAt) : 0;
+  const elapsed = recordingElapsedMs + activeMs;
   recordStatusEl.textContent = `Recording... ${formatDuration(elapsed)}`;
+}
+
+function startRecordingTimerLoop() {
+  if (recordingTimer) {
+    cancelAnimationFrame(recordingTimer);
+    recordingTimer = null;
+  }
+  const tick = () => {
+    if (!mediaRecorder || mediaRecorder.state !== "recording") {
+      recordingTimer = null;
+      return;
+    }
+    updateRecordingTimer();
+    recordingTimer = requestAnimationFrame(tick);
+  };
+  updateRecordingTimer();
+  recordingTimer = requestAnimationFrame(tick);
+}
+
+function stopRecordingTimerLoop() {
+  if (recordingTimer) {
+    cancelAnimationFrame(recordingTimer);
+    recordingTimer = null;
+  }
 }
 
 function sanitizeFilename(value) {
@@ -1295,9 +2651,662 @@ function sanitizeFilename(value) {
 }
 
 function getFileExtension(mimeType) {
+  if (mimeType.includes("webp")) return "webp";
   if (mimeType.includes("mp4")) return "m4a";
   if (mimeType.includes("aac")) return "aac";
+  if (mimeType.includes("wav")) return "wav";
   return "webm";
+}
+
+async function getAudioDurationSecondsFromBlob(blob) {
+  if (!blob) return 0;
+  const objectUrl = URL.createObjectURL(blob);
+  const audio = new Audio();
+  audio.preload = "metadata";
+  try {
+    const duration = await new Promise((resolve, reject) => {
+      audio.addEventListener("loadedmetadata", () => resolve(Number(audio.duration)), { once: true });
+      audio.addEventListener("error", () => reject(new Error("Unable to read audio metadata.")), { once: true });
+      audio.src = objectUrl;
+      audio.load();
+    });
+    return Number.isFinite(duration) && duration > 0 ? duration : 0;
+  } catch (_error) {
+    return 0;
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+async function getRecordingSourceBlob(recording) {
+  if (!recording) throw new Error("Recording not found.");
+  const local = localRecordings.get(recording.id);
+  if (local?.blob) return local.blob;
+  const loader = playbackLoaders.get(recording.id);
+  if (loader) {
+    try {
+      const loaded = await Promise.resolve(loader());
+      if (loaded) return loaded;
+    } catch (_error) {
+      // Continue to API fallback.
+    }
+  }
+  if (recording.metadata?.audio?.fileName) {
+    return fetchRecordingAudioBlob(recording.id);
+  }
+  throw new Error("No audio source available for this recording.");
+}
+
+function encodeWavFromChannels(channelData, sampleRate) {
+  const channels = Math.max(1, Array.isArray(channelData) ? channelData.length : 0);
+  const length = channels ? channelData[0].length : 0;
+  const bytesPerSample = 2;
+  const blockAlign = channels * bytesPerSample;
+  const dataSize = length * blockAlign;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+  const writeString = (offset, value) => {
+    for (let i = 0; i < value.length; i += 1) {
+      view.setUint8(offset + i, value.charCodeAt(i));
+    }
+  };
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let offset = 44;
+  for (let i = 0; i < length; i += 1) {
+    for (let channel = 0; channel < channels; channel += 1) {
+      const sample = Math.max(-1, Math.min(1, channelData[channel][i] || 0));
+      const int16 = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
+      view.setInt16(offset, int16, true);
+      offset += 2;
+    }
+  }
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
+async function removeDeadAirFromBlob(blob, minSilenceSeconds) {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) throw new Error("Web Audio API is unavailable in this browser.");
+  const audioContext = new AudioCtx();
+  try {
+    const arrayBuffer = await blob.arrayBuffer();
+    const input = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+    const sampleRate = input.sampleRate;
+    const channelCount = input.numberOfChannels || 1;
+    const totalSamples = input.length || 0;
+    if (totalSamples <= 0) throw new Error("Audio file is empty.");
+
+    const frameSamples = Math.max(256, Math.floor(sampleRate * 0.02));
+    const frameCount = Math.ceil(totalSamples / frameSamples);
+    const energies = new Array(frameCount).fill(0);
+    for (let frame = 0; frame < frameCount; frame += 1) {
+      const start = frame * frameSamples;
+      const end = Math.min(totalSamples, start + frameSamples);
+      let sum = 0;
+      let count = 0;
+      for (let channel = 0; channel < channelCount; channel += 1) {
+        const data = input.getChannelData(channel);
+        for (let i = start; i < end; i += 1) {
+          sum += Math.abs(data[i] || 0);
+          count += 1;
+        }
+      }
+      energies[frame] = count > 0 ? (sum / count) : 0;
+    }
+
+    const sorted = [...energies].sort((a, b) => a - b);
+    const noiseFloor = sorted[Math.floor(sorted.length * 0.2)] || 0;
+    const peakEnergy = sorted[sorted.length - 1] || 0;
+    const silenceThreshold = Math.max(0.0025, noiseFloor * 2.8, peakEnergy * 0.03);
+    const minSilenceFrames = Math.max(1, Math.floor((Number(minSilenceSeconds) || 0) / (frameSamples / sampleRate)));
+
+    const removableSilences = [];
+    let runStart = -1;
+    for (let frame = 0; frame < frameCount; frame += 1) {
+      const isSilent = energies[frame] < silenceThreshold;
+      if (isSilent) {
+        if (runStart < 0) runStart = frame;
+      } else if (runStart >= 0) {
+        const runLength = frame - runStart;
+        if (runLength >= minSilenceFrames) {
+          removableSilences.push({
+            start: runStart * frameSamples,
+            end: Math.min(totalSamples, frame * frameSamples)
+          });
+        }
+        runStart = -1;
+      }
+    }
+    if (runStart >= 0) {
+      const runLength = frameCount - runStart;
+      if (runLength >= minSilenceFrames) {
+        removableSilences.push({
+          start: runStart * frameSamples,
+          end: totalSamples
+        });
+      }
+    }
+
+    if (!removableSilences.length) {
+      return {
+        blob,
+        removedSeconds: 0,
+        originalSeconds: totalSamples / sampleRate,
+        processedSeconds: totalSamples / sampleRate
+      };
+    }
+
+    const keepRanges = [];
+    let cursor = 0;
+    removableSilences.forEach((gap) => {
+      if (gap.start > cursor) {
+        keepRanges.push({ start: cursor, end: gap.start });
+      }
+      cursor = Math.max(cursor, gap.end);
+    });
+    if (cursor < totalSamples) {
+      keepRanges.push({ start: cursor, end: totalSamples });
+    }
+    const normalizedKeepRanges = keepRanges.filter((range) => range.end > range.start);
+    if (!normalizedKeepRanges.length) {
+      throw new Error("Dead-air removal would produce empty audio.");
+    }
+
+    const outputSamples = normalizedKeepRanges.reduce((sum, range) => sum + (range.end - range.start), 0);
+    const outputChannels = Array.from({ length: channelCount }, () => new Float32Array(outputSamples));
+    const fadeSamples = Math.max(32, Math.floor(sampleRate * 0.006));
+    let writeOffset = 0;
+    normalizedKeepRanges.forEach((range, rangeIndex) => {
+      const span = range.end - range.start;
+      for (let channel = 0; channel < channelCount; channel += 1) {
+        const source = input.getChannelData(channel);
+        const target = outputChannels[channel];
+        target.set(source.subarray(range.start, range.end), writeOffset);
+        if (rangeIndex > 0) {
+          const fadeIn = Math.min(fadeSamples, span);
+          for (let i = 0; i < fadeIn; i += 1) {
+            const idx = writeOffset + i;
+            target[idx] *= i / Math.max(1, fadeIn);
+          }
+        }
+        if (rangeIndex < normalizedKeepRanges.length - 1) {
+          const fadeOut = Math.min(fadeSamples, span);
+          for (let i = 0; i < fadeOut; i += 1) {
+            const idx = writeOffset + span - 1 - i;
+            target[idx] *= i / Math.max(1, fadeOut);
+          }
+        }
+      }
+      writeOffset += span;
+    });
+
+    const processedBlob = encodeWavFromChannels(outputChannels, sampleRate);
+    const originalSeconds = totalSamples / sampleRate;
+    const processedSeconds = outputSamples / sampleRate;
+    return {
+      blob: processedBlob,
+      removedSeconds: Math.max(0, originalSeconds - processedSeconds),
+      originalSeconds,
+      processedSeconds
+    };
+  } finally {
+    await audioContext.close();
+  }
+}
+
+async function runDeadAirRemovalFlow(recording) {
+  const sourceBlob = await getRecordingSourceBlob(recording);
+  const processed = await removeDeadAirFromBlob(sourceBlob, deadAirThresholdSeconds);
+  if (processed.removedSeconds < 0.1) {
+    throw new Error(`No silence blocks >= ${deadAirThresholdSeconds.toFixed(1)}s were detected.`);
+  }
+  const nextTitle = `${recording.title} [Dead Air Removed]`;
+  const created = await createRecording(nextTitle);
+  const [durationSeconds, waveformPeaks] = await Promise.all([
+    getAudioDurationSecondsFromBlob(processed.blob),
+    buildWaveformPeaks(processed.blob, 140).catch(() => [])
+  ]);
+  const formData = new FormData();
+  formData.append("audio", processed.blob, `${sanitizeFilename(nextTitle)}.wav`);
+  formData.append("title", nextTitle);
+  if (durationSeconds > 0) {
+    formData.append("durationSeconds", String(durationSeconds));
+  }
+  if (waveformPeaks.length) {
+    formData.append("waveformPeaks", JSON.stringify(waveformPeaks));
+  }
+  const uploadResponse = await fetch(`${API_BASE}/api/v1/recordings/${created.id}/upload`, {
+    method: "POST",
+    body: formData
+  });
+  const uploadIsJson = uploadResponse.headers.get("content-type")?.includes("application/json");
+  const uploadPayload = uploadIsJson ? await uploadResponse.json() : await uploadResponse.text();
+  if (!uploadResponse.ok) {
+    const message = typeof uploadPayload === "string" ? uploadPayload : uploadPayload.error;
+    throw new Error(message || "Failed uploading processed audio");
+  }
+  if (durationSeconds > 0 || waveformPeaks.length) {
+    saveCachedPlaybackMeta(created.id, {
+      ...(durationSeconds > 0 ? { durationSeconds } : {}),
+      ...(waveformPeaks.length ? { peaks: waveformPeaks } : {})
+    });
+  }
+  await runTranscriptionFlow(created.id, { summaryMode: "always" });
+  await loadRecordings({ refreshCloud: true, preserveScroll: true });
+  return {
+    recordingId: created.id,
+    removedSeconds: processed.removedSeconds
+  };
+}
+
+function getPlaybackController(recordingId) {
+  if (!playbackControllers.has(recordingId)) {
+    const cached = getCachedPlaybackMeta(recordingId) || {};
+    playbackControllers.set(recordingId, {
+      audio: null,
+      objectUrl: null,
+      peaks: Array.isArray(cached.peaks) ? cached.peaks : null,
+      loadingPromise: null,
+      peaksPromise: null,
+      loadState: "idle",
+      loadError: "",
+      durationHint: Number.isFinite(Number(cached.durationSeconds)) ? Number(cached.durationSeconds) : 0
+    });
+  }
+  return playbackControllers.get(recordingId);
+}
+
+async function buildWaveformPeaks(blob, bucketCount = 160) {
+  const AudioCtx = window.AudioContext || window.webkitAudioContext;
+  if (!AudioCtx) return new Array(bucketCount).fill(0.15);
+  const audioContext = new AudioCtx();
+  try {
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer.slice(0));
+    const channels = audioBuffer.numberOfChannels || 1;
+    const length = audioBuffer.length || 1;
+    const blockSize = Math.max(1, Math.floor(length / bucketCount));
+    const peaks = new Array(bucketCount).fill(0);
+    for (let bucket = 0; bucket < bucketCount; bucket += 1) {
+      const start = bucket * blockSize;
+      const end = Math.min(start + blockSize, length);
+      let sum = 0;
+      let count = 0;
+      for (let channel = 0; channel < channels; channel += 1) {
+        const data = audioBuffer.getChannelData(channel);
+        for (let i = start; i < end; i += 1) {
+          const value = Math.abs(data[i] || 0);
+          sum += value;
+          count += 1;
+        }
+      }
+      peaks[bucket] = count ? (sum / count) : 0;
+    }
+    const max = Math.max(...peaks, 0.001);
+    return peaks.map((value) => Math.max(0.08, value / max));
+  } finally {
+    await audioContext.close();
+  }
+}
+
+function drawPlaybackWaveform(canvas, peaks, progress = 0) {
+  const ctx = canvas.getContext("2d");
+  const width = canvas.clientWidth || canvas.width;
+  const height = canvas.clientHeight || canvas.height;
+  if (!ctx || !width || !height) return;
+  canvas.width = width;
+  canvas.height = height;
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "rgba(19, 35, 26, 0.08)";
+  ctx.fillRect(0, 0, width, height);
+  const values = Array.isArray(peaks) && peaks.length ? peaks : new Array(120).fill(0.18);
+  const barWidth = width / values.length;
+  const playedX = width * Math.min(1, Math.max(0, progress));
+  for (let i = 0; i < values.length; i += 1) {
+    const amplitude = values[i];
+    const h = Math.max(2, amplitude * (height - 6));
+    const x = i * barWidth;
+    const y = (height - h) / 2;
+    ctx.fillStyle = x <= playedX ? "rgba(31, 122, 77, 0.9)" : "rgba(90, 106, 96, 0.55)";
+    ctx.fillRect(x, y, Math.max(1, barWidth - 1), h);
+  }
+}
+
+async function ensurePlaybackLoaded(recordingId, loadBlob) {
+  const controller = getPlaybackController(recordingId);
+  const loaderDurationHint = Number(loadBlob?.durationHint);
+  if (Number.isFinite(loaderDurationHint) && loaderDurationHint > 0 && !controller.durationHint) {
+    controller.durationHint = loaderDurationHint;
+    saveCachedPlaybackMeta(recordingId, { durationSeconds: loaderDurationHint });
+  }
+  if (controller.audio) return controller;
+  if (controller.loadingPromise) {
+    await controller.loadingPromise;
+    return controller;
+  }
+  controller.loadingPromise = (async () => {
+    controller.loadState = "loading";
+    controller.loadError = "";
+    try {
+      const directUrl = typeof loadBlob?.audioUrl === "string" ? loadBlob.audioUrl : "";
+      let blob = null;
+      let objectUrl = null;
+      const audio = new Audio(directUrl || "");
+      audio.preload = "auto";
+      controller.audio = audio;
+      controller.objectUrl = objectUrl;
+      controller.loadState = Number.isFinite(controller.durationHint) && controller.durationHint > 0 ? "ready" : "loading";
+
+      const hydratePeaks = (sourceBlob) => {
+        if (!sourceBlob || controller.peaksPromise || controller.peaks) return;
+        controller.peaksPromise = buildWaveformPeaks(sourceBlob)
+          .then((peaks) => {
+            controller.peaks = peaks;
+            saveCachedPlaybackMeta(recordingId, { peaks });
+          })
+          .catch((_error) => {
+            controller.peaks = null;
+          })
+          .finally(() => {
+            controller.peaksPromise = null;
+          });
+      };
+
+      await new Promise((resolve, reject) => {
+        let attemptedBlobFallback = false;
+        let resolved = false;
+        const finalizeReady = () => {
+          const durationSeconds = Number(audio.duration);
+          if (Number.isFinite(durationSeconds) && durationSeconds > 0) {
+            controller.durationHint = durationSeconds;
+            saveCachedPlaybackMeta(recordingId, { durationSeconds });
+          }
+          controller.loadState = "ready";
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        };
+
+        audio.addEventListener("loadedmetadata", finalizeReady, { once: true });
+        audio.addEventListener("canplay", finalizeReady, { once: true });
+        audio.addEventListener("error", () => {
+          if (directUrl && !attemptedBlobFallback) {
+            attemptedBlobFallback = true;
+            Promise.resolve(loadBlob())
+              .then((loadedBlob) => {
+                blob = loadedBlob;
+                objectUrl = URL.createObjectURL(loadedBlob);
+                controller.objectUrl = objectUrl;
+                audio.src = objectUrl;
+                audio.load();
+              })
+              .catch((error) => reject(error));
+            return;
+          }
+          reject(new Error("Audio load failed."));
+        }, { once: false });
+
+        if (directUrl) {
+          audio.load();
+          if (controller.durationHint > 0) {
+            // Don't block UI/play on metadata when we already know duration.
+            if (!resolved) {
+              resolved = true;
+              resolve();
+            }
+          }
+        } else {
+          Promise.resolve(loadBlob())
+            .then((loadedBlob) => {
+              blob = loadedBlob;
+              objectUrl = URL.createObjectURL(loadedBlob);
+              controller.objectUrl = objectUrl;
+              audio.src = objectUrl;
+              audio.load();
+            })
+            .catch((error) => reject(error));
+        }
+      });
+
+      if (blob) {
+        hydratePeaks(blob);
+      } else if (!directUrl) {
+        Promise.resolve(loadBlob())
+          .then((loadedBlob) => hydratePeaks(loadedBlob))
+          .catch((_error) => {
+            // Ignore waveform background fetch errors.
+          });
+      } else if (!controller.peaks && !(Array.isArray(loadBlob?.initialPeaks) && loadBlob.initialPeaks.length)) {
+        // Defer heavy blob fetch on cloud audio so it doesn't delay immediate scrubber/play startup.
+        setTimeout(() => {
+          Promise.resolve(loadBlob())
+            .then((loadedBlob) => hydratePeaks(loadedBlob))
+            .catch((_error) => {
+              // Ignore waveform background fetch errors.
+            });
+        }, 5000);
+      }
+    } catch (error) {
+      controller.loadState = "error";
+      controller.loadError = error.message || "Failed loading audio.";
+      throw error;
+    }
+  })();
+  try {
+    await controller.loadingPromise;
+    return controller;
+  } finally {
+    controller.loadingPromise = null;
+  }
+}
+
+function preloadPlaybackForRecording(recordingId) {
+  const loader = playbackLoaders.get(recordingId);
+  if (!loader) return;
+  ensurePlaybackLoaded(recordingId, loader).catch((_error) => {
+    // Keep the UI interactive; playback button can retry.
+  });
+}
+
+async function ensurePlaybackAttached(recordingId, loadBlob) {
+  const controller = getPlaybackController(recordingId);
+  if (controller.audio) return controller;
+  if (!controller.loadingPromise) {
+    ensurePlaybackLoaded(recordingId, loadBlob).catch((_error) => {
+      // Caller will surface playback errors on interaction.
+    });
+  }
+  const startedAt = Date.now();
+  while (!controller.audio && Date.now() - startedAt < 2000) {
+    // Poll briefly because the audio object is attached very early in load flow.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  if (!controller.audio) {
+    throw new Error("Playback failed to initialize.");
+  }
+  return controller;
+}
+
+function releasePlayback(recordingId) {
+  const controller = playbackControllers.get(recordingId);
+  if (!controller) return;
+  try {
+    controller.audio?.pause();
+  } catch (_error) {
+    // Ignore pause errors.
+  }
+  if (controller.objectUrl) URL.revokeObjectURL(controller.objectUrl);
+  playbackControllers.delete(recordingId);
+}
+
+function createPlaybackSection(recordingId, loadBlob) {
+  const section = document.createElement("div");
+  section.className = "playback-section";
+  const controllerHint = getPlaybackController(recordingId);
+  const initialDurationHint = Number(loadBlob?.durationHint);
+  if (Number.isFinite(initialDurationHint) && initialDurationHint > 0 && !controllerHint.durationHint) {
+    controllerHint.durationHint = initialDurationHint;
+  }
+  if (!controllerHint.peaks && Array.isArray(loadBlob?.initialPeaks) && loadBlob.initialPeaks.length) {
+    controllerHint.peaks = loadBlob.initialPeaks;
+  }
+
+  const controls = document.createElement("div");
+  controls.className = "playback-controls";
+
+  const playPauseBtn = document.createElement("button");
+  playPauseBtn.type = "button";
+  playPauseBtn.className = "playback-toggle";
+  playPauseBtn.textContent = "Play";
+
+  const timeLabel = document.createElement("span");
+  timeLabel.className = "playback-time";
+  timeLabel.textContent = "00:00 / 00:00";
+
+  controls.appendChild(playPauseBtn);
+  controls.appendChild(timeLabel);
+
+  const waveCanvas = document.createElement("canvas");
+  waveCanvas.className = "playback-wave";
+  waveCanvas.height = 54;
+
+  const loadStatus = document.createElement("div");
+  loadStatus.className = "playback-load-status";
+  loadStatus.textContent = "Preparing scrubber...";
+
+  const scrubber = document.createElement("input");
+  scrubber.type = "range";
+  scrubber.className = "playback-scrubber";
+  scrubber.min = "0";
+  scrubber.max = "1";
+  scrubber.step = "0.001";
+  scrubber.value = "0";
+  scrubber.disabled = true;
+
+  section.appendChild(controls);
+  section.appendChild(waveCanvas);
+  section.appendChild(loadStatus);
+  section.appendChild(scrubber);
+
+  let optimisticPlayStartedAt = 0;
+  let optimisticBaseTime = 0;
+
+  const refreshPlaybackUi = () => {
+    const controller = getPlaybackController(recordingId);
+    const audio = controller.audio;
+    const isLoading = controller.loadState === "loading";
+    const hasError = controller.loadState === "error";
+    const duration = Number.isFinite(audio?.duration) && audio.duration > 0
+      ? audio.duration
+      : (Number.isFinite(controller.durationHint) ? controller.durationHint : 0);
+    const measuredCurrent = Number.isFinite(audio?.currentTime) ? audio.currentTime : 0;
+    let current = measuredCurrent;
+    if (audio && !audio.paused && optimisticPlayStartedAt && duration > 0) {
+      const optimistic = Math.min(
+        duration,
+        optimisticBaseTime + ((Date.now() - optimisticPlayStartedAt) / 1000)
+      );
+      current = Math.max(measuredCurrent, optimistic);
+      if (measuredCurrent > optimisticBaseTime + 0.25) {
+        optimisticPlayStartedAt = 0;
+      }
+    } else if (!audio || audio.paused) {
+      optimisticPlayStartedAt = 0;
+    }
+    if (!(duration > 0)) {
+      current = 0;
+    } else if (current > duration) {
+      current = duration;
+    }
+    const progress = duration > 0 ? Math.min(1, current / duration) : 0;
+    scrubber.disabled = !audio || duration <= 0;
+    scrubber.value = String(progress);
+    drawPlaybackWaveform(waveCanvas, controller.peaks, progress);
+    // Highlight should track real playback clock, not optimistic UI progress.
+    syncActiveTranscriptWord(recordingId, measuredCurrent);
+    section.classList.toggle("is-loading", isLoading);
+    section.classList.toggle("has-error", hasError);
+    if (hasError) {
+      loadStatus.hidden = false;
+      loadStatus.textContent = `Scrubber load failed: ${controller.loadError || "unknown error"}`;
+    } else if (isLoading || !audio) {
+      loadStatus.hidden = false;
+      loadStatus.textContent = "Loading audio and scrubber...";
+    } else {
+      loadStatus.hidden = true;
+    }
+    const left = formatDuration(current * 1000);
+    const right = formatDuration(duration * 1000);
+    timeLabel.textContent = `${left} / ${right}`;
+    playPauseBtn.classList.toggle("is-playing", Boolean(audio && !audio.paused));
+    playPauseBtn.classList.toggle("is-paused", Boolean(audio && audio.paused && current > 0 && current < duration));
+    playPauseBtn.textContent = audio && !audio.paused ? "Pause" : "Play";
+  };
+
+  playPauseBtn.addEventListener("click", async () => {
+    playPauseBtn.disabled = true;
+    try {
+      const controller = await ensurePlaybackAttached(recordingId, loadBlob);
+      if (controller.audio.paused) {
+        const effectiveDuration = Number.isFinite(controller.audio.duration) && controller.audio.duration > 0
+          ? controller.audio.duration
+          : (Number.isFinite(controller.durationHint) ? controller.durationHint : 0);
+        if (effectiveDuration > 0 && controller.audio.currentTime >= (effectiveDuration - 0.05)) {
+          controller.audio.currentTime = 0;
+        }
+        optimisticBaseTime = Number.isFinite(controller.audio.currentTime) ? controller.audio.currentTime : 0;
+        optimisticPlayStartedAt = Date.now();
+        await controller.audio.play();
+      } else {
+        controller.audio.pause();
+        optimisticPlayStartedAt = 0;
+      }
+      refreshPlaybackUi();
+    } catch (error) {
+      alert(`Playback failed: ${error.message}`);
+    } finally {
+      playPauseBtn.disabled = false;
+      refreshPlaybackUi();
+    }
+  });
+
+  scrubber.addEventListener("input", () => {
+    const controller = getPlaybackController(recordingId);
+    const audio = controller.audio;
+    const duration = Number.isFinite(audio?.duration) && audio.duration > 0
+      ? audio.duration
+      : (Number.isFinite(controller.durationHint) ? controller.durationHint : 0);
+    if (!audio || duration <= 0) return;
+    audio.currentTime = Number(scrubber.value) * duration;
+    optimisticPlayStartedAt = 0;
+    refreshPlaybackUi();
+  });
+
+  const loop = () => {
+    if (!section.isConnected) return;
+    refreshPlaybackUi();
+    requestAnimationFrame(loop);
+  };
+  drawPlaybackWaveform(waveCanvas, getPlaybackController(recordingId).peaks, 0);
+  requestAnimationFrame(loop);
+  ensurePlaybackLoaded(recordingId, loadBlob)
+    .then(() => refreshPlaybackUi())
+    .catch(() => refreshPlaybackUi());
+
+  return section;
 }
 
 function setupVisualizer(stream) {
@@ -1351,8 +3360,7 @@ async function startRecording() {
     setRecordingUiState({
       message: "Audio recording is not supported in this browser.",
       startDisabled: true,
-      stopDisabled: true,
-      downloadDisabled: true
+      stopDisabled: true
     });
     return;
   }
@@ -1361,7 +3369,9 @@ async function startRecording() {
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     activeStream = stream;
     recordedChunks = [];
-    setupVisualizer(stream);
+    recordingElapsedMs = 0;
+    recordingStartedAt = null;
+    resetLiveCaptions();
 
     const mimeType = pickRecordingMimeType();
     const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
@@ -1372,32 +3382,49 @@ async function startRecording() {
     });
 
     recorder.addEventListener("stop", () => {
+      if (recordingStartedAt) {
+        recordingElapsedMs += Date.now() - recordingStartedAt;
+      }
+      recordingStartedAt = null;
       const blob = new Blob(recordedChunks, { type: recorder.mimeType || "audio/webm" });
       if (downloadUrl) URL.revokeObjectURL(downloadUrl);
       downloadUrl = URL.createObjectURL(blob);
-      recordPlaybackEl.src = downloadUrl;
-      recordPlaybackEl.load();
-
-      const title = recordingTitleEl?.value?.trim() || "ovj_recording";
-      recordDownloadBtn.dataset.filename = `${sanitizeFilename(title)}.${getFileExtension(blob.type)}`;
-      const localEntry = createLocalRecording({ title, blob, downloadUrl });
+      const title = recordingTitleEl?.value?.trim() || buildDefaultRecordingTitle();
+      const elapsedDurationSeconds = Math.max(0, recordingElapsedMs / 1000);
+      const localEntry = createLocalRecording({
+        title,
+        blob,
+        downloadUrl,
+        durationSeconds: elapsedDurationSeconds,
+        captionAnchors: [...liveCaptionAnchors]
+      });
 
       setRecordingUiState({
         message: "Recording ready.",
         startDisabled: false,
         stopDisabled: true,
-        downloadDisabled: false,
-        isRecording: false
+        isRecording: false,
+        isPaused: false
       });
+      stopLiveCaptions({ keepFinal: true });
+      setLiveCaptionsStatus("Live captions complete.");
 
-      if (uploadEnabled) {
+      const shouldUpload = pendingStopActionOverride === "upload"
+        || (pendingStopActionOverride !== "local" && uploadEnabled);
+      const shouldPromptLocalDownload = !shouldUpload && uploadEnabled === false && pendingStopActionOverride !== "local";
+      pendingStopActionOverride = null;
+
+      if (shouldUpload) {
         markLocalRecording(localEntry.id, { uploadStatus: "uploading" });
         loadRecordings();
-        uploadRecording(blob, title, localEntry.id);
+        uploadRecording(blob, title, localEntry.id, localEntry.durationSeconds, localEntry.captionAnchors);
       } else {
-        promptLocalDownload("Uploads are disabled. The recording is only on this device.");
+        if (shouldPromptLocalDownload) {
+          promptLocalDownload("Uploads are disabled. The recording is only on this device.");
+        }
         loadRecordings();
       }
+      applyDefaultRecordingTitle(true);
 
       mediaRecorder = null;
       if (activeStream) {
@@ -1411,9 +3438,12 @@ async function startRecording() {
         message: `Recording failed: ${event.error?.message || "Recorder error"}`,
         startDisabled: false,
         stopDisabled: true,
-        downloadDisabled: true,
-        isRecording: false
+        isRecording: false,
+        isPaused: false
       });
+      stopLiveCaptions({ keepFinal: true });
+      setLiveCaptionsStatus("Live captions stopped.");
+      stopRecordingTimerLoop();
       mediaRecorder = null;
       if (activeStream) {
         activeStream.getTracks().forEach((track) => track.stop());
@@ -1423,21 +3453,75 @@ async function startRecording() {
 
     recorder.start();
     recordingStartedAt = Date.now();
-    recordingTimer = setInterval(updateRecordingTimer, 500);
+    startRecordingTimerLoop();
+    // Start recording immediately; initialize secondary UI features after.
+    setTimeout(() => {
+      try {
+        setupVisualizer(stream);
+      } catch (_error) {
+        // Visualizer failure should not block recording.
+      }
+      startLiveCaptions();
+    }, 0);
 
     setRecordingUiState({
       message: "Recording... 00:00",
-      startDisabled: true,
+      startDisabled: false,
       stopDisabled: false,
-      downloadDisabled: true,
-      isRecording: true
+      isRecording: true,
+      isPaused: false
     });
   } catch (error) {
+    stopLiveCaptions({ keepFinal: false });
+    if (isLiveCaptionsSupported()) {
+      setLiveCaptionsStatus("Live captions: ready");
+    }
+    stopRecordingTimerLoop();
     setRecordingUiState({
       message: `Recording failed: ${error.message}`,
       startDisabled: false,
-      stopDisabled: true,
-      downloadDisabled: true
+      stopDisabled: true
+    });
+  }
+}
+
+function toggleRecordPause() {
+  const recorder = mediaRecorder;
+  if (!recorder) {
+    startRecording();
+    return;
+  }
+
+  if (recorder.state === "recording") {
+    recorder.pause();
+    stopLiveCaptions({ keepFinal: true });
+    setLiveCaptionsStatus("Live captions paused.");
+    if (recordingStartedAt) {
+      recordingElapsedMs += Date.now() - recordingStartedAt;
+    }
+    recordingStartedAt = null;
+    stopRecordingTimerLoop();
+    setRecordingUiState({
+      message: `Paused at ${formatDuration(recordingElapsedMs)}`,
+      startDisabled: false,
+      stopDisabled: false,
+      isRecording: false,
+      isPaused: true
+    });
+    return;
+  }
+
+  if (recorder.state === "paused") {
+    recorder.resume();
+    startLiveCaptions();
+    recordingStartedAt = Date.now();
+    startRecordingTimerLoop();
+    setRecordingUiState({
+      message: `Recording... ${formatDuration(recordingElapsedMs)}`,
+      startDisabled: false,
+      stopDisabled: false,
+      isRecording: true,
+      isPaused: false
     });
   }
 }
@@ -1466,6 +3550,15 @@ async function requestMicrophonePermission() {
 function stopRecording() {
   const recorder = mediaRecorder;
   if (!recorder) return;
+  stopLiveCaptions({ keepFinal: true });
+  setLiveCaptionsStatus("Live captions stopped.");
+  pendingStopActionOverride = stopActionOverride;
+  stopActionOverride = null;
+  saveHoldArmed = false;
+  if (saveHoldTimer) {
+    clearTimeout(saveHoldTimer);
+    saveHoldTimer = null;
+  }
   recordStopBtn.disabled = true;
   try {
     if (recorder.state !== "inactive") {
@@ -1474,20 +3567,16 @@ function stopRecording() {
   } catch (_error) {
     // Ignore stop errors.
   }
-  clearInterval(recordingTimer);
-  recordingTimer = null;
-  recordingStartedAt = null;
+  stopRecordingTimerLoop();
   stopVisualizer();
 }
 
 function downloadRecording() {
-  if (!downloadUrl && recordPlaybackEl?.src) {
-    downloadUrl = recordPlaybackEl.src;
-  }
   if (!downloadUrl) return;
+  const fallbackTitle = recordingTitleEl?.value?.trim() || "ovj_recording";
   const link = document.createElement("a");
   link.href = downloadUrl;
-  link.download = recordDownloadBtn.dataset.filename || "ovj_recording.webm";
+  link.download = `${sanitizeFilename(fallbackTitle)}.webm`;
   document.body.appendChild(link);
   link.click();
   link.remove();
@@ -1504,15 +3593,43 @@ function promptLocalDownload(reason) {
   }
 }
 
-async function uploadRecording(blob, title, localId) {
+async function uploadRecording(blob, title, localId, fallbackDurationSeconds = 0, captionAnchors = []) {
   if (!uploadStatusEl) return;
-  uploadStatusEl.textContent = "Uploading recording...";
+  uploadStatusEl.textContent = "Preparing waveform...";
   try {
     const recording = await createRecording(title);
+    const [measuredDurationSeconds, waveformPeaks] = await Promise.all([
+      getAudioDurationSecondsFromBlob(blob),
+      buildWaveformPeaks(blob, 140).catch(() => [])
+    ]);
+    const durationSeconds = Math.max(
+      0,
+      Number(measuredDurationSeconds) || 0,
+      Number(fallbackDurationSeconds) || 0
+    );
     const formData = new FormData();
     const fileName = `${sanitizeFilename(title)}.${getFileExtension(blob.type)}`;
     formData.append("audio", blob, fileName);
     formData.append("title", title);
+    if (durationSeconds > 0) {
+      formData.append("durationSeconds", String(durationSeconds));
+    }
+    if (waveformPeaks.length) {
+      formData.append("waveformPeaks", JSON.stringify(waveformPeaks));
+    }
+    if (Array.isArray(captionAnchors) && captionAnchors.length) {
+      const safeAnchors = captionAnchors
+        .map((entry) => ({
+          text: String(entry?.text || "").trim(),
+          at: Number(entry?.at)
+        }))
+        .filter((entry) => entry.text && Number.isFinite(entry.at) && entry.at >= 0)
+        .slice(0, 500);
+      if (safeAnchors.length) {
+        formData.append("captionAnchors", JSON.stringify(safeAnchors));
+      }
+    }
+    uploadStatusEl.textContent = "Uploading recording...";
 
     const response = await fetch(`${API_BASE}/api/v1/recordings/${recording.id}/upload`, {
       method: "POST",
@@ -1525,12 +3642,20 @@ async function uploadRecording(blob, title, localId) {
       throw new Error(message || "Failed uploading audio");
     }
 
+    if (durationSeconds > 0) {
+      saveCachedPlaybackMeta(recording.id, { durationSeconds });
+    }
+    if (waveformPeaks.length) {
+      saveCachedPlaybackMeta(recording.id, { peaks: waveformPeaks });
+    }
     uploadStatusEl.textContent = `Uploaded: ${recording.id}`;
     if (localId) {
       const previous = localRecordings.get(localId);
       if (previous?.downloadUrl) {
         URL.revokeObjectURL(previous.downloadUrl);
       }
+      releasePlayback(localId);
+      playbackLoaders.delete(localId);
       localRecordings.delete(localId);
     }
     loadRecordings();
@@ -1561,14 +3686,25 @@ async function uploadManualFile() {
   }
 
   manualUploadBtn.disabled = true;
-  manualStatusEl.textContent = "Uploading file...";
+  manualStatusEl.textContent = "Preparing waveform...";
 
   try {
     const title = manualTitleEl?.value?.trim() || file.name.replace(/\.[^/.]+$/, "");
     const recording = await createRecording(title);
+    const [durationSeconds, waveformPeaks] = await Promise.all([
+      getAudioDurationSecondsFromBlob(file),
+      buildWaveformPeaks(file, 140).catch(() => [])
+    ]);
     const formData = new FormData();
     formData.append("audio", file, file.name);
     formData.append("title", title);
+    if (durationSeconds > 0) {
+      formData.append("durationSeconds", String(durationSeconds));
+    }
+    if (waveformPeaks.length) {
+      formData.append("waveformPeaks", JSON.stringify(waveformPeaks));
+    }
+    manualStatusEl.textContent = "Uploading file...";
 
     const response = await fetch(`${API_BASE}/api/v1/recordings/${recording.id}/upload`, {
       method: "POST",
@@ -1620,14 +3756,27 @@ if (autoTranscribeToggleEl) {
   autoTranscribeToggleEl.addEventListener("change", () => {
     autoTranscribeEnabled = Boolean(autoTranscribeToggleEl.checked);
     localStorage.setItem(AUTO_TRANSCRIBE_KEY, String(autoTranscribeEnabled));
-    renderAiSettings();
+    if (aiSettingsStatusEl) {
+      aiSettingsStatusEl.textContent = `Auto transcribe: ${autoTranscribeEnabled ? "On" : "Off"} | Auto summarize: ${autoSummarizeEnabled ? "On" : "Off"}`;
+    }
   });
 }
 if (autoSummarizeToggleEl) {
   autoSummarizeToggleEl.addEventListener("change", () => {
     autoSummarizeEnabled = Boolean(autoSummarizeToggleEl.checked);
     localStorage.setItem(AUTO_SUMMARIZE_KEY, String(autoSummarizeEnabled));
-    renderAiSettings();
+    if (aiSettingsStatusEl) {
+      aiSettingsStatusEl.textContent = `Auto transcribe: ${autoTranscribeEnabled ? "On" : "Off"} | Auto summarize: ${autoSummarizeEnabled ? "On" : "Off"}`;
+    }
+  });
+}
+if (identifyVoicesToggleEl) {
+  identifyVoicesToggleEl.addEventListener("change", () => {
+    identifyVoicesEnabled = Boolean(identifyVoicesToggleEl.checked);
+    localStorage.setItem(IDENTIFY_VOICES_KEY, String(identifyVoicesEnabled));
+    if (aiSettingsStatusEl) {
+      aiSettingsStatusEl.textContent = `Identify voices: ${identifyVoicesEnabled ? "On" : "Off"}`;
+    }
   });
 }
 
@@ -1645,18 +3794,93 @@ if (uploadToggleEl) {
   });
 }
 
-if (recordStartBtn && recordStopBtn && recordDownloadBtn) {
+if (liveCaptionsToggleEl) {
+  liveCaptionsToggleEl.checked = Boolean(liveCaptionsEnabled);
+  liveCaptionsToggleEl.addEventListener("change", (event) => {
+    liveCaptionsEnabled = Boolean(event.target.checked);
+    localStorage.setItem(LIVE_CAPTIONS_KEY, String(liveCaptionsEnabled));
+    if (!liveCaptionsEnabled) {
+      stopLiveCaptions({ keepFinal: false });
+    }
+    if (liveCaptionsPanelEl) {
+      liveCaptionsPanelEl.hidden = !liveCaptionsEnabled;
+    }
+    if (liveCaptionsEnabled) {
+      const captionsSupported = isLiveCaptionsSupported();
+      setLiveCaptionsStatus(captionsSupported ? "Live captions: ready" : "Live captions unavailable in this browser.");
+      renderLiveCaptionsText();
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        startLiveCaptions();
+      }
+    }
+  });
+}
+
+if (debugTranscriptTimestampsToggleEl) {
+  debugTranscriptTimestampsToggleEl.checked = Boolean(debugTranscriptTimestampsEnabled);
+  debugTranscriptTimestampsToggleEl.addEventListener("change", (event) => {
+    debugTranscriptTimestampsEnabled = Boolean(event.target.checked);
+    localStorage.setItem(DEBUG_TRANSCRIPT_TIMESTAMPS_KEY, String(debugTranscriptTimestampsEnabled));
+    loadRecordings({ refreshCloud: false, preserveScroll: true });
+  });
+}
+
+if (recordStartBtn && recordStopBtn) {
   const supported = Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+  const captionsSupported = isLiveCaptionsSupported();
   setRecordingUiState({
     message: supported ? "Ready to record." : "Audio recording is not supported in this browser.",
     startDisabled: !supported,
     stopDisabled: true,
-    downloadDisabled: true,
     isRecording: false
   });
-  recordStartBtn.addEventListener("click", startRecording);
+  if (liveCaptionsPanelEl) {
+    liveCaptionsPanelEl.hidden = !liveCaptionsEnabled;
+  }
+  if (liveCaptionsEnabled) {
+    if (captionsSupported) {
+      setLiveCaptionsStatus("Live captions: ready");
+    } else {
+      setLiveCaptionsStatus("Live captions unavailable in this browser.");
+    }
+    renderLiveCaptionsText();
+  }
+  recordStartBtn.addEventListener("click", toggleRecordPause);
   recordStopBtn.addEventListener("click", stopRecording);
-  recordDownloadBtn.addEventListener("click", downloadRecording);
+
+  const beginSaveHold = () => {
+    const recorder = mediaRecorder;
+    if (!recorder || recorder.state === "inactive" || recordStopBtn.disabled) return;
+    if (saveHoldTimer) clearTimeout(saveHoldTimer);
+    saveHoldArmed = true;
+    if (recordStatusEl) {
+      recordStatusEl.textContent = uploadEnabled
+        ? "Hold Save for 3s to force local-only save."
+        : "Hold Save for 3s to force upload.";
+    }
+    saveHoldTimer = setTimeout(() => {
+      if (!saveHoldArmed) return;
+      stopActionOverride = uploadEnabled ? "local" : "upload";
+      if (recordStatusEl) {
+        recordStatusEl.textContent = uploadEnabled
+          ? "Override set: this save will stay local."
+          : "Override set: this save will upload.";
+      }
+    }, 3000);
+  };
+
+  const endSaveHold = () => {
+    saveHoldArmed = false;
+    if (saveHoldTimer) {
+      clearTimeout(saveHoldTimer);
+      saveHoldTimer = null;
+    }
+  };
+
+  recordStopBtn.addEventListener("pointerdown", beginSaveHold);
+  recordStopBtn.addEventListener("pointerup", endSaveHold);
+  recordStopBtn.addEventListener("pointercancel", endSaveHold);
+  recordStopBtn.addEventListener("pointerleave", endSaveHold);
 }
 
 if (micEnableBtn) {
@@ -1664,11 +3888,65 @@ if (micEnableBtn) {
 }
 
 if (refreshRecordingsBtn) {
-  refreshRecordingsBtn.addEventListener("click", loadRecordings);
+  refreshRecordingsBtn.addEventListener("click", () => {
+    loadRecordings({ refreshCloud: true, appendCloud: false });
+  });
+}
+
+if (recordingsSearchEl) {
+  recordingsSearchEl.addEventListener("input", () => {
+    cloudQuery = String(recordingsSearchEl.value || "").trim();
+    loadRecordings({ refreshCloud: true, appendCloud: false });
+  });
 }
 
 if (createBackupBtn) {
   createBackupBtn.addEventListener("click", createBackup);
+}
+
+if (saveTimeZoneBtn) {
+  saveTimeZoneBtn.addEventListener("click", () => {
+    const nextValue = (timeZoneInputEl?.value || "").trim();
+    if (!nextValue) {
+      if (timeZoneStatusEl) timeZoneStatusEl.textContent = "Enter a valid IANA timezone.";
+      return;
+    }
+    if (!validateTimeZone(nextValue)) {
+      if (timeZoneStatusEl) timeZoneStatusEl.textContent = `Invalid timezone: ${nextValue}`;
+      return;
+    }
+    preferredTimeZone = nextValue;
+    localStorage.setItem(TIME_ZONE_KEY, preferredTimeZone);
+    renderTimeZoneSettings();
+    applyDefaultRecordingTitle(true);
+    loadRecordings();
+  });
+}
+
+if (useSystemTimeZoneBtn) {
+  useSystemTimeZoneBtn.addEventListener("click", () => {
+    preferredTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+    localStorage.setItem(TIME_ZONE_KEY, preferredTimeZone);
+    renderTimeZoneSettings();
+    applyDefaultRecordingTitle(true);
+    loadRecordings();
+  });
+}
+
+if (saveDeadAirThresholdBtn) {
+  saveDeadAirThresholdBtn.addEventListener("click", () => {
+    deadAirThresholdSeconds = sanitizeDeadAirThresholdSeconds(deadAirThresholdInputEl?.value);
+    localStorage.setItem(DEAD_AIR_THRESHOLD_KEY, String(deadAirThresholdSeconds));
+    renderDeadAirSettings();
+  });
+}
+
+if (deadAirThresholdInputEl) {
+  deadAirThresholdInputEl.addEventListener("change", () => {
+    deadAirThresholdSeconds = sanitizeDeadAirThresholdSeconds(deadAirThresholdInputEl.value);
+    localStorage.setItem(DEAD_AIR_THRESHOLD_KEY, String(deadAirThresholdSeconds));
+    renderDeadAirSettings();
+  });
 }
 
 if (manualUploadBtn) {
@@ -1679,13 +3957,19 @@ tabButtons.forEach((btn) => {
   btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
 });
 
+window.addEventListener("scroll", queueRecordingsViewportRefresh, { passive: true });
+window.addEventListener("resize", queueRecordingsViewportRefresh);
+
 renderApiBase();
 renderAiSettings();
+renderTimeZoneSettings();
+renderDeadAirSettings();
+applyDefaultRecordingTitle(true);
 (async () => {
   await ensureReachableApiBase();
   await checkHealth();
   await loadVersion();
-  await loadRecordings();
+  await loadRecordings({ refreshCloud: true, appendCloud: false });
   await loadBackups();
   setActiveTab(localStorage.getItem(TAB_KEY) || "record");
 })();

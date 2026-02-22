@@ -8,6 +8,7 @@ import {
   createJob,
   deleteRecording,
   getRecording,
+  listJobs,
   listRecordings,
   updateRecordingMetadata
 } from "../store/store.js";
@@ -48,9 +49,21 @@ const upload = multer({
 
 recordingsRouter.get("/recordings", async (req, res) => {
   try {
-    const limit = Number(req.query.limit || 50);
-    const recordings = await listRecordings(Number.isNaN(limit) ? 50 : limit);
-    res.json(recordings);
+    const parsedLimit = Number(req.query.limit || 50);
+    const parsedOffset = Number(req.query.offset || 0);
+    const limit = Number.isFinite(parsedLimit) ? Math.min(Math.max(parsedLimit, 1), 200) : 50;
+    const offset = Number.isFinite(parsedOffset) ? Math.max(parsedOffset, 0) : 0;
+    const queryText = String(req.query.q || "").trim();
+    const rows = await listRecordings(limit + 1, offset, queryText);
+    const hasMore = rows.length > limit;
+    res.json({
+      recordings: hasMore ? rows.slice(0, limit) : rows,
+      pagination: {
+        limit,
+        offset,
+        hasMore
+      }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -100,6 +113,22 @@ recordingsRouter.post("/recordings/:id/transcribe", async (req, res) => {
     const recording = await getRecording(req.params.id);
     if (!recording) return res.status(404).json({ error: "recording not found" });
 
+    const recentJobs = await listJobs(500);
+    const existing = recentJobs.find((job) =>
+      job?.type === "transcription"
+      && job?.recordingId === recording.id
+      && (job?.status === "queued" || job?.status === "running")
+    );
+    if (existing) {
+      return res.status(202).json({
+        recordingId: recording.id,
+        status: existing.status,
+        message: "Transcription already queued or running for this recording.",
+        deduped: true,
+        job: existing
+      });
+    }
+
     const job = await createJob({
       type: "transcription",
       recordingId: recording.id,
@@ -114,6 +143,7 @@ recordingsRouter.post("/recordings/:id/transcribe", async (req, res) => {
       recordingId: recording.id,
       status: "queued",
       message: "Transcription job accepted",
+      deduped: false,
       job
     });
   } catch (error) {
@@ -127,18 +157,144 @@ recordingsRouter.post("/recordings/:id/upload", upload.single("audio"), async (r
     if (!recording) return res.status(404).json({ error: "recording not found" });
     if (!req.file) return res.status(400).json({ error: "audio file is required" });
 
+    const durationSeconds = Number(req.body?.durationSeconds);
+    let waveformPeaks = [];
+    let captionAnchors = [];
+    if (req.body?.waveformPeaks) {
+      try {
+        const parsed = JSON.parse(req.body.waveformPeaks);
+        if (Array.isArray(parsed)) {
+          waveformPeaks = parsed
+            .map((value) => Number(value))
+            .filter((value) => Number.isFinite(value) && value >= 0)
+            .slice(0, 400);
+        }
+      } catch (_error) {
+        waveformPeaks = [];
+      }
+    }
+    if (req.body?.captionAnchors) {
+      try {
+        const parsed = JSON.parse(req.body.captionAnchors);
+        if (Array.isArray(parsed)) {
+          captionAnchors = parsed
+            .map((entry) => ({
+              text: String(entry?.text || "").trim(),
+              at: Number(entry?.at)
+            }))
+            .filter((entry) => entry.text && Number.isFinite(entry.at) && entry.at >= 0)
+            .slice(0, 500);
+        }
+      } catch (_error) {
+        captionAnchors = [];
+      }
+    }
     const metadataPatch = {
       audio: {
         fileName: req.file.filename,
         originalName: req.file.originalname,
         mimeType: req.file.mimetype,
         size: req.file.size,
-        uploadedAt: new Date().toISOString()
+        uploadedAt: new Date().toISOString(),
+        ...(Number.isFinite(durationSeconds) && durationSeconds > 0
+          ? {
+            durationSeconds,
+            durationMs: Math.round(durationSeconds * 1000)
+          }
+          : {}),
+        ...(waveformPeaks.length
+          ? {
+            waveformPeaks,
+            waveformBuckets: waveformPeaks.length
+          }
+          : {}),
+        ...(captionAnchors.length
+          ? {
+            captionAnchors
+          }
+          : {})
       }
     };
 
     const updated = await updateRecordingMetadata(recording.id, metadataPatch);
     return res.status(201).json({ recording: updated });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+recordingsRouter.put("/recordings/:id/speakers", async (req, res) => {
+  try {
+    const recording = await getRecording(req.params.id);
+    if (!recording) return res.status(404).json({ error: "recording not found" });
+    const labels = req.body?.labels;
+    if (!labels || typeof labels !== "object") {
+      return res.status(400).json({ error: "labels object is required" });
+    }
+
+    const existing = recording.metadata?.speakers || {};
+    const merged = {
+      ...existing,
+      labels: {
+        ...(existing.labels || {}),
+        ...labels
+      },
+      updatedAt: new Date().toISOString()
+    };
+
+    const updated = await updateRecordingMetadata(recording.id, { speakers: merged });
+    return res.json({ recording: updated });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+recordingsRouter.put("/recordings/:id/tags", async (req, res) => {
+  try {
+    const recording = await getRecording(req.params.id);
+    if (!recording) return res.status(404).json({ error: "recording not found" });
+    const rawTags = req.body?.tags;
+    if (!Array.isArray(rawTags)) {
+      return res.status(400).json({ error: "tags array is required" });
+    }
+    const tags = rawTags
+      .map((tag) => String(tag || "").trim())
+      .filter(Boolean)
+      .slice(0, 20);
+    const unique = Array.from(new Set(tags));
+    const updated = await updateRecordingMetadata(recording.id, { tags: unique });
+    return res.json({ recording: updated });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+});
+
+recordingsRouter.put("/recordings/:id/captions", async (req, res) => {
+  try {
+    const recording = await getRecording(req.params.id);
+    if (!recording) return res.status(404).json({ error: "recording not found" });
+    const rawAnchors = req.body?.anchors;
+    if (!Array.isArray(rawAnchors)) {
+      return res.status(400).json({ error: "anchors array is required" });
+    }
+    const anchors = rawAnchors
+      .map((entry) => ({
+        text: String(entry?.text || "").trim(),
+        at: Number(entry?.at)
+      }))
+      .filter((entry) => entry.text && Number.isFinite(entry.at) && entry.at >= 0)
+      .slice(0, 500);
+    if (!anchors.length) {
+      return res.status(400).json({ error: "anchors array had no valid entries" });
+    }
+    const existingAudio = recording.metadata?.audio || {};
+    const updated = await updateRecordingMetadata(recording.id, {
+      audio: {
+        ...existingAudio,
+        captionAnchors: anchors
+      }
+    });
+    return res.json({ recording: updated });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }

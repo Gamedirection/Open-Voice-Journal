@@ -1,7 +1,7 @@
 ﻿openapi: 3.0.3
 info:
   title: Open-Voice-Journal API
-  version: 0.2.0
+  version: 0.3.0
   description: API contract for recording ingestion, uploads, provider configuration, and summaries.
 servers:
   - url: http://localhost:8080
@@ -60,6 +60,17 @@ paths:
             type: integer
             minimum: 1
             maximum: 200
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 0
+        - name: q
+          in: query
+          required: false
+          schema:
+            type: string
       responses:
         '200':
           description: Recordings listed
@@ -155,7 +166,90 @@ paths:
             type: string
       responses:
         '202':
-          description: Job queued
+          description: Job queued or deduplicated if already queued/running
+  /api/v1/recordings/{id}/speakers:
+    put:
+      summary: Save speaker labels for transcript speakers
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [labels]
+              properties:
+                labels:
+                  type: object
+                  additionalProperties:
+                    type: string
+      responses:
+        '200':
+          description: Speaker labels updated
+        '404':
+          description: Recording not found
+  /api/v1/recordings/{id}/tags:
+    put:
+      summary: Save recording tags
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tags]
+              properties:
+                tags:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: Tags updated
+        '404':
+          description: Recording not found
+  /api/v1/recordings/{id}/captions:
+    put:
+      summary: Save caption anchor timestamps for subtitle export
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [anchors]
+              properties:
+                anchors:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      text:
+                        type: string
+                      at:
+                        type: number
+      responses:
+        '200':
+          description: Captions updated
+        '404':
+          description: Recording not found
   /api/v1/recordings/{id}/summaries:
     post:
       summary: Generate summary for recording
