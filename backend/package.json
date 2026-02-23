@@ -1,6 +1,6 @@
-﻿{
+{
   "name": "open-voice-journal-api",
-  "version": "0.3.0",
+  "version": "0.3.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -13,6 +13,7 @@
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "multer": "^1.4.5-lts.1",
+    "nodemailer": "^6.10.1",
     "pg": "^8.13.3",
     "swagger-ui-express": "^5.0.1",
     "yaml": "^2.5.1"

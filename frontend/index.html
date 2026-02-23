@@ -10,10 +10,13 @@
     <main class="app-shell">
       <header class="hero">
         <div class="hero-row">
-          <div>
+          <div class="hero-brand">
+            <img id="brandLogo" class="brand-logo" alt="" hidden />
+            <div>
             <h1>Open-Voice-Journal</h1>
             <p>Basic test app for web and Android APK validation.</p>
             <p id="projectVersion" class="hint">Version: loading...</p>
+            </div>
           </div>
           <nav class="tab-bar">
             <button class="tab-button is-active" type="button" data-tab="record">Record</button>
@@ -74,7 +77,32 @@
 
       <section id="tab-settings" class="tab-panel">
         <section class="card-grid">
-          <article class="card">
+          <article id="accountCard" class="card">
+            <h2>Account</h2>
+            <input id="authEmail" type="email" placeholder="Email" />
+            <input id="authPassword" type="password" placeholder="Password" />
+            <div id="authLoginRow" class="button-row">
+              <button id="authLogin" type="button">Login</button>
+            </div>
+            <div id="authLogoutRow" class="button-row" hidden>
+              <button id="authLogout" type="button">Logout</button>
+            </div>
+            <h3 class="subsection-title">Create Account</h3>
+            <input id="authRegisterName" type="text" placeholder="Display name" />
+            <input id="authRegisterEmail" type="email" placeholder="Email" />
+            <input id="authRegisterPassword" type="password" placeholder="Password" />
+            <button id="authRegister" type="button">Create Account</button>
+            <div id="authChangePasswordGroup" hidden>
+              <input id="authCurrentPassword" type="password" placeholder="Current password" />
+              <input id="authNewPassword" type="password" placeholder="New password" />
+              <button id="authChangePassword" type="button">Change Password</button>
+            </div>
+            <input id="authResetEmail" type="email" placeholder="Forgot password email" />
+            <button id="authForgotPassword" type="button">Send Reset Link</button>
+            <p id="authStatus" class="hint">Not logged in.</p>
+          </article>
+
+          <article id="generalSettingsCard" class="card">
             <h2>Settings</h2>
             <button id="themeToggle" class="toggle-button" type="button">Dark mode: Off</button>
             <button id="micEnable" class="ghost-button" type="button">Enable Microphone</button>
@@ -110,10 +138,7 @@
             />
             <button id="saveDeadAirThreshold" type="button">Save Dead Air Setting</button>
             <p id="deadAirThresholdStatus" class="hint">Silence runs above threshold will be removed.</p>
-          </article>
-
-          <article class="card">
-            <h2>Date & Time</h2>
+            <h3 class="subsection-title">Date & Time</h3>
             <input id="timeZoneInput" placeholder="Time zone (example: America/New_York)" />
             <div class="button-row">
               <button id="saveTimeZone" type="button">Save Time Zone</button>
@@ -122,7 +147,7 @@
             <p id="timeZoneStatus" class="hint">Using system time zone.</p>
           </article>
 
-          <article class="card">
+          <article id="automationCard" class="card">
             <h2>Automation & AI</h2>
             <label class="switch-row">
               <span>Auto transcribe after upload</span>
@@ -158,7 +183,7 @@
             <p id="aiSettingsStatus" class="hint">Default provider: local Ollama.</p>
           </article>
 
-          <article class="card">
+          <article id="apiConnectionsCard" class="card" hidden>
             <h2>API Connections</h2>
             <input id="apiBaseInput" placeholder="http://192.168.1.100:8080" />
             <button id="saveApiBase" type="button">Save API URL</button>
@@ -176,16 +201,75 @@
             <button id="queueTranscription" type="button">Queue Job</button>
             <p id="recordingResult">No recording created yet.</p>
             <p id="jobResult">No job queued yet.</p>
+            <h3 class="subsection-title">Open Signup</h3>
+            <label class="switch-row">
+              <span>Open signup enabled</span>
+              <span class="switch">
+                <input id="openSignupToggle" type="checkbox" />
+                <span class="slider"></span>
+              </span>
+            </label>
+            <button id="saveOpenSignup" type="button">Save Signup Setting</button>
+            <p id="openSignupStatus" class="hint">Signup policy not loaded.</p>
+            <h3 class="subsection-title">OpenAPI Keys</h3>
+            <input id="openApiKeyName" placeholder="Key name (example: CI read access)" />
+            <button id="createOpenApiKey" type="button">Create OpenAPI Key</button>
+            <p id="openApiKeyCreateStatus" class="hint">Use header: X-OpenAPI-Key.</p>
+            <div id="openApiKeyList" class="recordings-list">No OpenAPI keys yet.</div>
           </article>
 
-          <article class="card">
+          <article id="serverBackupCard" class="card" hidden>
             <h2>Server Backup</h2>
             <button id="createBackup" type="button">Backup Server Now</button>
             <p id="backupStatus" class="hint">Create a backup before deleting or restoring data.</p>
             <div id="backupList" class="recordings-list">No backups yet.</div>
           </article>
 
-          <article class="card">
+          <article id="adminUsersCard" class="card" hidden>
+            <h2>Users & Data Governance</h2>
+            <input id="adminUsersQuery" placeholder="Search email/name..." />
+            <div class="recording-actions">
+              <select id="adminUsersStatus">
+                <option value="">All status</option>
+                <option value="active">Active</option>
+                <option value="blocked">Blocked</option>
+              </select>
+              <select id="adminUsersRole">
+                <option value="">All roles</option>
+                <option value="admin">Admin</option>
+                <option value="user">User</option>
+              </select>
+              <select id="adminUsersSort">
+                <option value="created_desc">Newest</option>
+                <option value="storage_desc">Storage</option>
+                <option value="activity_desc">Activity</option>
+                <option value="recordings_desc">Recordings</option>
+              </select>
+              <button id="adminUsersRefresh" type="button">Refresh Users</button>
+            </div>
+            <div id="adminUsersStatusText" class="hint">Admin data not loaded.</div>
+            <div class="table-scroll">
+              <table class="admin-users-table">
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Name</th>
+                    <th>Role</th>
+                    <th>Status</th>
+                    <th>Storage</th>
+                    <th>Recordings</th>
+                    <th>Transcript</th>
+                    <th>Summaries</th>
+                    <th>Last Activity</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="adminUsersTableBody"></tbody>
+              </table>
+            </div>
+          </article>
+
+          <article id="docsCard" class="card">
             <h2>Documentation & Credits</h2>
             <p><a id="docsSwaggerLink" href="#" target="_blank" rel="noopener noreferrer">API Swagger</a></p>
             <p><a id="docsOpenApiLink" href="#" target="_blank" rel="noopener noreferrer">OpenAPI JSON</a></p>

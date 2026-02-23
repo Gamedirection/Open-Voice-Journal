@@ -1,7 +1,7 @@
 ﻿openapi: 3.0.3
 info:
   title: Open-Voice-Journal API
-  version: 0.3.0
+  version: 0.3.2
   description: API contract for recording ingestion, uploads, provider configuration, and summaries.
 servers:
   - url: http://localhost:8080
@@ -12,6 +12,38 @@ paths:
       responses:
         '200':
           description: API is healthy
+  /api/openapi.json:
+    get:
+      summary: Fetch OpenAPI JSON (admin bearer token or X-OpenAPI-Key required)
+      responses:
+        '200':
+          description: OpenAPI document
+        '401':
+          description: Missing/invalid auth
+        '403':
+          description: Admin required
+  /api/v1/auth/register:
+    post:
+      summary: Register a new user account (when open signup is enabled)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+                displayName:
+                  type: string
+      responses:
+        '201':
+          description: User created
+        '403':
+          description: signup_disabled
   /api/v1/ai/providers:
     get:
       summary: List available providers and configured provider entries
@@ -376,6 +408,85 @@ paths:
           description: Backup restored
         '404':
           description: Backup not found
+  /api/v1/admin/settings/auth:
+    get:
+      summary: Get auth settings (admin)
+      responses:
+        '200':
+          description: Auth settings loaded
+    patch:
+      summary: Update auth settings (admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                openSignupEnabled:
+                  type: boolean
+      responses:
+        '200':
+          description: Auth settings updated
+  /api/v1/admin/openapi-keys:
+    get:
+      summary: List current admin OpenAPI keys
+      responses:
+        '200':
+          description: Keys listed
+    post:
+      summary: Create a new admin OpenAPI key (plaintext returned once)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+      responses:
+        '201':
+          description: Key created
+  /api/v1/admin/openapi-keys/{id}:
+    delete:
+      summary: Revoke an OpenAPI key
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Key revoked
+  /api/v1/admin/users/{id}/promote:
+    post:
+      summary: Promote user to admin
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User promoted
+  /api/v1/admin/users/{id}/demote:
+    post:
+      summary: Demote admin to user with safeguards
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: User demoted
+        '400':
+          description: cannot_self_demote or cannot_demote_last_active_admin
 components:
   schemas:
     CreateProviderConfigRequest:

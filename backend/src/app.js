@@ -10,7 +10,11 @@ import { summaryRouter } from "./routes/summaries.js";
 import { recordingsRouter } from "./routes/recordings.js";
 import { jobsRouter } from "./routes/jobs.js";
 import { backupsRouter } from "./routes/backups.js";
+import { authRouter } from "./routes/auth.js";
+import { adminUsersRouter } from "./routes/adminUsers.js";
+import { adminSettingsRouter } from "./routes/adminSettings.js";
 import { checkStoreHealth, getActiveBackend, initStore } from "./store/store.js";
+import { ensureDefaultAdmin, requireAdmin, requireAuth, requireOpenApiAccess } from "./auth.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -97,20 +101,31 @@ app.get("/api/version", (_req, res) => {
   }
 });
 
-app.get("/api/openapi.json", (_req, res) => {
+app.get("/api/openapi.json", requireOpenApiAccess, (_req, res) => {
   res.json(openApiDocument);
+});
+
+app.get("/api/v1/public/branding", (_req, res) => {
+  res.json({
+    appName: "Open-Voice-Journal",
+    brandLogoUrl: String(process.env.APP_BRAND_LOGO_URL || "").trim()
+  });
 });
 
 app.use("/api/docs", swaggerUi.serve, swaggerUi.setup(openApiDocument));
 
-app.use("/api/v1/ai/providers", providerRouter);
-app.use("/api/v1", summaryRouter);
-app.use("/api/v1", recordingsRouter);
-app.use("/api/v1", jobsRouter);
-app.use("/api/v1", backupsRouter);
+app.use("/api/v1", authRouter);
+app.use("/api/v1/ai/providers", requireAuth, requireAdmin, providerRouter);
+app.use("/api/v1", requireAuth, summaryRouter);
+app.use("/api/v1", requireAuth, recordingsRouter);
+app.use("/api/v1", requireAuth, jobsRouter);
+app.use("/api/v1", requireAuth, requireAdmin, backupsRouter);
+app.use("/api/v1", requireAuth, requireAdmin, adminUsersRouter);
+app.use("/api/v1", requireAuth, requireAdmin, adminSettingsRouter);
 
 async function start() {
   await initStore();
+  await ensureDefaultAdmin();
   app.listen(port, () => {
     console.log(`[api] listening on :${port}`);
   });

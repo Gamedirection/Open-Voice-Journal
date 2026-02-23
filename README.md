@@ -4,12 +4,15 @@ Open-Voice-Journal is a self-hosted, open-source transcription platform for team
 
 ## Latest Release
 
-- Current backend/API version: `v0.3.0`
+- Current backend/API version: `v0.3.2`
 - Current Android app version: `1.0.3` (`versionCode 4`)
 - Current mobile package version: `0.3.0`
-- Release date: `2026-02-22`
+- Release date: `2026-02-23`
 
 Recent release highlights:
+- admin-gated settings and account card layout improvements
+- per-admin OpenAPI key lifecycle + protected `/api/openapi.json`
+- admin promote/demote safeguards and open-signup controls
 - faster scrubber preload and waveform playback behavior
 - clickable transcript + active word highlighting
 - live captions with subtitle (`.srt`) export
@@ -94,9 +97,22 @@ Security and governance:
 ## OpenAPI and Swagger
 
 The backend serves OpenAPI docs and Swagger UI for contract-first development:
-- OpenAPI JSON: `GET /api/openapi.json`
+- OpenAPI JSON: `GET /api/openapi.json` (admin bearer token or `X-OpenAPI-Key` required)
 - Swagger UI: `GET /api/docs`
 - Standalone Swagger viewer (Docker): `http://localhost:8090` (prod-server uses `:3091`)
+
+## Auth and Admin Governance
+
+- Dedicated account UX supports login/logout, registration (when enabled), password change, and forgot-password flow.
+- Admin-only settings/tools are hidden from non-admin users:
+  - API Connections
+  - Server Backup
+  - Users & Data Governance
+- Open signup is controlled by admins via `auth.open_signup_enabled`.
+- Admins can promote/demote users with guardrails:
+  - self-demotion blocked
+  - last active admin cannot be demoted
+- Per-admin OpenAPI keys can be created/revoked and are hash-stored server-side.
 
 ## Initial API Contracts
 
@@ -263,6 +279,18 @@ APK output:
 
 - If the web app and API are exposed on different ports (example: web `:3090`, API `:3089`), set the API URL in the Settings tab to `http://<server-ip>:3089`.
 - HTTPS deployments should expose the API via the same origin (reverse proxy `/api`) to avoid mixed-content blocking.
+
+### Prod Server Compose (`rec.gamedirection.net`)
+
+- `docker-compose.prod-server.yml` uses GHCR images for `web`, `api`, and `worker`.
+- Image tag is controlled with `OVJ_IMAGE_TAG` (defaults to `latest`).
+- Recommended `server.env` values:
+  - `DOMAIN=rec.gamedirection.net`
+  - `APP_PUBLIC_BASE_URL=https://rec.gamedirection.net`
+  - `OVJ_IMAGE_TAG=v0.3.2`
+- If you run Nginx Proxy Manager separately, keep host port mapping:
+  - web `3090 -> 80`
+  - api `3089 -> 8080`
 
 ## APK Update-Friendly Build
 

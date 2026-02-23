@@ -1,6 +1,6 @@
 services:
   web:
-    image: ghcr.io/gamedirection/open-voice-journal-web:latest
+    image: ghcr.io/gamedirection/open-voice-journal-web:${OVJ_IMAGE_TAG:-latest}
     ports:
       - "3090:80"
     deploy:
@@ -14,7 +14,7 @@ services:
       - api
 
   api:
-    image: ghcr.io/gamedirection/open-voice-journal-api:latest
+    image: ghcr.io/gamedirection/open-voice-journal-api:${OVJ_IMAGE_TAG:-latest}
     environment:
       - NODE_ENV=production
       - API_PORT=8080
@@ -27,6 +27,29 @@ services:
       - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY}
       - LOCAL_ONLY_SUMMARIZATION=${LOCAL_ONLY_SUMMARIZATION}
       - ALLOWED_SUMMARY_PROVIDERS=${ALLOWED_SUMMARY_PROVIDERS}
+      - TRANSCRIPTION_API_BASE_URL=${TRANSCRIPTION_API_BASE_URL}
+      - TRANSCRIPTION_ENDPOINT_PATH=${TRANSCRIPTION_ENDPOINT_PATH}
+      - TRANSCRIPTION_MODEL=${TRANSCRIPTION_MODEL}
+      - TRANSCRIPTION_API_KEY=${TRANSCRIPTION_API_KEY}
+      - TRANSCRIPTION_LANGUAGE=${TRANSCRIPTION_LANGUAGE}
+      - TRANSCRIPTION_TIMEOUT_MS=${TRANSCRIPTION_TIMEOUT_MS}
+      - TRANSCRIPTION_INCLUDE_MODEL_FIELD=${TRANSCRIPTION_INCLUDE_MODEL_FIELD}
+      - TRANSCRIPTION_FILE_FIELD=${TRANSCRIPTION_FILE_FIELD}
+      - APP_DEFAULT_ADMIN_EMAIL=${APP_DEFAULT_ADMIN_EMAIL}
+      - APP_DEFAULT_ADMIN_PASSWORD=${APP_DEFAULT_ADMIN_PASSWORD}
+      - APP_DEFAULT_ADMIN_NAME=${APP_DEFAULT_ADMIN_NAME}
+      - APP_BRAND_LOGO_URL=${APP_BRAND_LOGO_URL}
+      - AUTH_SESSION_TTL_MS=${AUTH_SESSION_TTL_MS}
+      - ADMIN_DELETE_REQUIRES_BACKUP=${ADMIN_DELETE_REQUIRES_BACKUP}
+      - USER_BACKUP_STORAGE_PATH=${USER_BACKUP_STORAGE_PATH}
+      - AUDIT_LOG_RETENTION_DAYS=${AUDIT_LOG_RETENTION_DAYS}
+      - APP_PUBLIC_BASE_URL=${APP_PUBLIC_BASE_URL}
+      - SMTP_HOST=${SMTP_HOST}
+      - SMTP_PORT=${SMTP_PORT}
+      - SMTP_SECURE=${SMTP_SECURE}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASSWORD=${SMTP_PASSWORD}
+      - SMTP_FROM_EMAIL=${SMTP_FROM_EMAIL}
     ports:
       - "3089:8080"
     volumes:
@@ -42,25 +65,10 @@ services:
       - postgres
       - redis
       - ollama
-
-  swagger:
-    image: swaggerapi/swagger-ui:latest
-    environment:
-      - SWAGGER_JSON_URL=http://api:8080/api/openapi.json
-    ports:
-      - "3091:8080"
-    deploy:
-      replicas: 1
-      placement:
-        constraints:
-          - node.role == manager
-      restart_policy:
-        condition: on-failure
-    depends_on:
-      - api
+      - whisper
 
   worker:
-    image: ghcr.io/gamedirection/open-voice-journal-worker:latest
+    image: ghcr.io/gamedirection/open-voice-journal-worker:${OVJ_IMAGE_TAG:-latest}
     environment:
       - NODE_ENV=production
       - POSTGRES_DB=${POSTGRES_DB}
@@ -72,6 +80,16 @@ services:
       - SECRET_ENCRYPTION_KEY=${SECRET_ENCRYPTION_KEY}
       - LOCAL_ONLY_SUMMARIZATION=${LOCAL_ONLY_SUMMARIZATION}
       - ALLOWED_SUMMARY_PROVIDERS=${ALLOWED_SUMMARY_PROVIDERS}
+      - TRANSCRIPTION_API_BASE_URL=${TRANSCRIPTION_API_BASE_URL}
+      - TRANSCRIPTION_ENDPOINT_PATH=${TRANSCRIPTION_ENDPOINT_PATH}
+      - TRANSCRIPTION_MODEL=${TRANSCRIPTION_MODEL}
+      - TRANSCRIPTION_API_KEY=${TRANSCRIPTION_API_KEY}
+      - TRANSCRIPTION_LANGUAGE=${TRANSCRIPTION_LANGUAGE}
+      - TRANSCRIPTION_TIMEOUT_MS=${TRANSCRIPTION_TIMEOUT_MS}
+      - TRANSCRIPTION_INCLUDE_MODEL_FIELD=${TRANSCRIPTION_INCLUDE_MODEL_FIELD}
+      - TRANSCRIPTION_FILE_FIELD=${TRANSCRIPTION_FILE_FIELD}
+    volumes:
+      - uploads:/app/uploads
     deploy:
       replicas: 1
       placement:
@@ -83,6 +101,13 @@ services:
       - postgres
       - redis
       - ollama
+      - whisper
+
+  whisper:
+    image: onerahmet/openai-whisper-asr-webservice:latest
+    environment:
+      - ASR_MODEL=${TRANSCRIPTION_MODEL}
+      - ASR_ENGINE=openai_whisper
 
   postgres:
     image: pgvector/pgvector:pg16

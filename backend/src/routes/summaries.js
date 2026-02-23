@@ -29,11 +29,18 @@ function extractTags(value) {
     .slice(0, 5);
 }
 
+function canAccessRecording(user, recording) {
+  if (!user || !recording) return false;
+  if (user.role === "admin") return true;
+  return Boolean(recording.ownerUserId && recording.ownerUserId === user.id);
+}
+
 summaryRouter.post("/recordings/:id/summaries", async (req, res) => {
   try {
     const recordingId = req.params.id;
     const recording = await getRecording(recordingId);
     if (!recording) return res.status(404).json({ error: "recording not found" });
+    if (!canAccessRecording(req.user, recording)) return res.status(403).json({ error: "forbidden" });
 
     const providerId = req.body?.provider || "ollama_local";
     const model = req.body?.model || process.env.OLLAMA_MODEL || "qwen2.5:7b-instruct";
@@ -91,6 +98,8 @@ summaryRouter.get("/summaries/:id", async (req, res) => {
   try {
     const summary = await getSummary(req.params.id);
     if (!summary) return res.status(404).json({ error: "summary not found" });
+    const recording = await getRecording(summary.recordingId);
+    if (!recording || !canAccessRecording(req.user, recording)) return res.status(403).json({ error: "forbidden" });
     return res.json(summary);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -100,6 +109,9 @@ summaryRouter.get("/summaries/:id", async (req, res) => {
 summaryRouter.get("/recordings/:id/summaries", async (req, res) => {
   try {
     const recordingId = req.params.id;
+    const recording = await getRecording(recordingId);
+    if (!recording) return res.status(404).json({ error: "recording not found" });
+    if (!canAccessRecording(req.user, recording)) return res.status(403).json({ error: "forbidden" });
     const parsed = Number(req.query.limit || 5);
     const limit = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), 20) : 5;
     const summaries = await listSummariesByRecording(recordingId, limit);

@@ -1,6 +1,12 @@
 import { randomUUID } from "node:crypto";
 
 const state = {
+  users: new Map(),
+  sessions: new Map(),
+  userSettings: new Map(),
+  appSettings: new Map(),
+  auditLogs: [],
+  openApiKeys: new Map(),
   recordings: new Map(),
   summaries: new Map(),
   providerConfigs: new Map(),
@@ -11,6 +17,7 @@ export function createRecording(payload) {
   const now = new Date().toISOString();
   const record = {
     id: randomUUID(),
+    ownerUserId: payload.ownerUserId || null,
     title: payload.title || "Untitled recording",
     status: "uploaded",
     createdAt: now,
@@ -94,6 +101,288 @@ export function deleteRecording(id) {
   }
 
   return existing;
+}
+
+export function createUser(payload) {
+  const now = new Date().toISOString();
+  const user = {
+    id: payload.id || randomUUID(),
+    email: String(payload.email || "").toLowerCase(),
+    displayName: payload.displayName || "",
+    role: payload.role || "user",
+    status: payload.status || "active",
+    passwordHash: payload.passwordHash,
+    avatarUrl: payload.avatarUrl || "",
+    lastLoginAt: null,
+    createdAt: now,
+    updatedAt: now
+  };
+  state.users.set(user.id, user);
+  return { ...user };
+}
+
+export function getUserByEmail(email) {
+  const needle = String(email || "").toLowerCase();
+  return Array.from(state.users.values()).find((user) => user.email === needle) || null;
+}
+
+export function getUserById(id) {
+  return state.users.get(id) || null;
+}
+
+export function touchUserLogin(id) {
+  const user = state.users.get(id);
+  if (!user) return;
+  user.lastLoginAt = new Date().toISOString();
+  user.updatedAt = user.lastLoginAt;
+  state.users.set(id, user);
+}
+
+export function updateUserStatus(id, status) {
+  const user = state.users.get(id);
+  if (!user) return null;
+  user.status = status;
+  user.updatedAt = new Date().toISOString();
+  state.users.set(id, user);
+  return { ...user };
+}
+
+export function updateUserRole(id, role) {
+  const user = state.users.get(id);
+  if (!user) return null;
+  user.role = role;
+  user.updatedAt = new Date().toISOString();
+  state.users.set(id, user);
+  return { ...user };
+}
+
+export function updateUserPassword(id, passwordHash) {
+  const user = state.users.get(id);
+  if (!user) return;
+  user.passwordHash = passwordHash;
+  user.updatedAt = new Date().toISOString();
+  state.users.set(id, user);
+}
+
+export function listUsers({ queryText = "", status = "", role = "", limit = 50, offset = 0 } = {}) {
+  const q = String(queryText || "").trim().toLowerCase();
+  const items = Array.from(state.users.values())
+    .filter((user) => {
+      if (status && user.status !== status) return false;
+      if (role && user.role !== role) return false;
+      if (!q) return true;
+      return user.email.includes(q) || String(user.displayName || "").toLowerCase().includes(q);
+    })
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+  return items.slice(offset, offset + limit).map((entry) => ({ ...entry }));
+}
+
+export function createSession(userId, tokenHash, expiresAt) {
+  const session = {
+    id: randomUUID(),
+    userId,
+    tokenHash,
+    expiresAt: new Date(expiresAt).toISOString(),
+    createdAt: new Date().toISOString(),
+    revokedAt: null
+  };
+  state.sessions.set(session.id, session);
+  return { ...session };
+}
+
+export function getSessionByTokenHash(tokenHash) {
+  const entry = Array.from(state.sessions.values()).find((session) => session.tokenHash === tokenHash);
+  if (!entry) return null;
+  const user = state.users.get(entry.userId) || null;
+  return { ...entry, user: user ? { ...user } : null };
+}
+
+export function revokeSessionByTokenHash(tokenHash) {
+  for (const [id, session] of state.sessions.entries()) {
+    if (session.tokenHash !== tokenHash) continue;
+    state.sessions.set(id, { ...session, revokedAt: new Date().toISOString() });
+  }
+}
+
+export function revokeAllUserSessions(userId) {
+  for (const [id, session] of state.sessions.entries()) {
+    if (session.userId !== userId || session.revokedAt) continue;
+    state.sessions.set(id, { ...session, revokedAt: new Date().toISOString() });
+  }
+}
+
+export function countActiveAdmins() {
+  return Array.from(state.users.values()).filter((user) => user.role === "admin" && user.status === "active").length;
+}
+
+export function countActiveAdminsExcludingUser(userId) {
+  return Array.from(state.users.values()).filter((user) => user.id !== userId && user.role === "admin" && user.status === "active").length;
+}
+
+export function getUserUsage(userId) {
+  const recordings = Array.from(state.recordings.values()).filter((entry) => entry.ownerUserId === userId);
+  const recordingIds = new Set(recordings.map((entry) => entry.id));
+  const summariesTotal = Array.from(state.summaries.values()).filter((entry) => recordingIds.has(entry.recordingId)).length;
+  const audioBytesTotal = recordings.reduce((acc, entry) => acc + Number(entry.metadata?.audio?.size || 0), 0);
+  const transcriptCharsTotal = recordings.reduce((acc, entry) => {
+    return acc + String(entry.metadata?.transcript?.text || "").length;
+  }, 0);
+  const lastActivity = recordings
+    .map((entry) => entry.createdAt)
+    .sort()
+    .pop() || null;
+  return {
+    audioBytesTotal,
+    recordingsTotal: recordings.length,
+    transcriptCharsTotal,
+    summariesTotal,
+    lastActivityAt: lastActivity
+  };
+}
+
+export function upsertUserSetting(userId, key, value) {
+  const current = state.userSettings.get(userId) || {};
+  current[key] = value || {};
+  state.userSettings.set(userId, current);
+}
+
+export function listUserSettings(userId) {
+  return { ...(state.userSettings.get(userId) || {}) };
+}
+
+export function upsertAppSetting(key, value) {
+  state.appSettings.set(String(key), value || {});
+}
+
+export function getAppSetting(key) {
+  return state.appSettings.has(String(key)) ? (state.appSettings.get(String(key)) || {}) : null;
+}
+
+export function listAppSettings(prefix = "") {
+  const out = {};
+  const start = String(prefix || "");
+  for (const [key, value] of state.appSettings.entries()) {
+    if (start && !key.startsWith(start)) continue;
+    out[key] = value || {};
+  }
+  return out;
+}
+
+export function insertAuditLog({ actorUserId = null, targetUserId = null, event, details = {} }) {
+  state.auditLogs.push({
+    id: randomUUID(),
+    actorUserId,
+    targetUserId,
+    event,
+    details,
+    createdAt: new Date().toISOString()
+  });
+}
+
+export function createOpenApiKey({ userId, name, keyHash, prefix }) {
+  const key = {
+    id: randomUUID(),
+    userId,
+    name,
+    keyHash,
+    prefix,
+    createdAt: new Date().toISOString(),
+    lastUsedAt: null,
+    revokedAt: null
+  };
+  state.openApiKeys.set(key.id, key);
+  return {
+    id: key.id,
+    userId: key.userId,
+    name: key.name,
+    prefix: key.prefix,
+    createdAt: key.createdAt,
+    lastUsedAt: key.lastUsedAt,
+    revokedAt: key.revokedAt
+  };
+}
+
+export function listOpenApiKeysByUser(userId) {
+  return Array.from(state.openApiKeys.values())
+    .filter((entry) => entry.userId === userId)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+    .map((entry) => ({
+      id: entry.id,
+      userId: entry.userId,
+      name: entry.name,
+      prefix: entry.prefix,
+      createdAt: entry.createdAt,
+      lastUsedAt: entry.lastUsedAt,
+      revokedAt: entry.revokedAt
+    }));
+}
+
+export function getOpenApiKeyByHash(keyHash) {
+  const key = Array.from(state.openApiKeys.values()).find((entry) => entry.keyHash === keyHash);
+  if (!key) return null;
+  const user = state.users.get(key.userId) || null;
+  return {
+    id: key.id,
+    userId: key.userId,
+    name: key.name,
+    prefix: key.prefix,
+    createdAt: key.createdAt,
+    lastUsedAt: key.lastUsedAt,
+    revokedAt: key.revokedAt,
+    user: user ? { ...user } : null
+  };
+}
+
+export function touchOpenApiKeyLastUsed(id) {
+  const key = state.openApiKeys.get(id);
+  if (!key) return;
+  key.lastUsedAt = new Date().toISOString();
+  state.openApiKeys.set(id, key);
+}
+
+export function revokeOpenApiKey(id, userId) {
+  const key = state.openApiKeys.get(id);
+  if (!key || key.userId !== userId || key.revokedAt) return null;
+  key.revokedAt = new Date().toISOString();
+  state.openApiKeys.set(id, key);
+  return {
+    id: key.id,
+    userId: key.userId,
+    name: key.name,
+    prefix: key.prefix,
+    createdAt: key.createdAt,
+    lastUsedAt: key.lastUsedAt,
+    revokedAt: key.revokedAt
+  };
+}
+
+export function listUserOwnedRecordings(userId) {
+  return Array.from(state.recordings.values())
+    .filter((entry) => entry.ownerUserId === userId)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+export function hardDeleteUserAndData(userId) {
+  const recordings = listUserOwnedRecordings(userId);
+  recordings.forEach((recording) => {
+    deleteRecording(recording.id);
+  });
+  state.userSettings.delete(userId);
+  state.users.delete(userId);
+  for (const [id, session] of state.sessions.entries()) {
+    if (session.userId === userId) state.sessions.delete(id);
+  }
+  for (const [id, key] of state.openApiKeys.entries()) {
+    if (key.userId === userId) state.openApiKeys.delete(id);
+  }
+  return { recordings, recordingIds: recordings.map((entry) => entry.id) };
+}
+
+export function assignUnownedRecordingsToUser(userId) {
+  for (const [id, recording] of state.recordings.entries()) {
+    if (recording.ownerUserId) continue;
+    state.recordings.set(id, { ...recording, ownerUserId: userId });
+  }
 }
 
 export function createSummary(payload) {

@@ -27,6 +27,20 @@ body {
   flex-wrap: wrap;
 }
 
+.hero-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brand-logo {
+  width: 42px;
+  height: 42px;
+  border-radius: 8px;
+  object-fit: cover;
+  border: 1px solid var(--border);
+}
+
 .app-shell { min-height: 100vh; padding: 28px; }
 .hero { max-width: 860px; margin: 0 auto 18px auto; }
 .hero h1 { margin: 0 0 8px 0; font-size: clamp(1.7rem, 4vw, 2.3rem); }
@@ -150,6 +164,44 @@ a:hover {
 .hint {
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+.table-scroll {
+  overflow: auto;
+  margin-top: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.admin-users-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.admin-users-table th,
+.admin-users-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.admin-users-table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.inline-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.inline-actions button {
+  width: auto;
+  padding: 6px 8px;
+  margin-top: 0;
+  font-size: 0.78rem;
 }
 
 audio {
@@ -359,20 +411,26 @@ audio {
 .recordings-header-actions {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  gap: 14px;
 }
 
 .recordings-legend {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 14px;
 }
 
 .legend-item {
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
-  gap: 4px;
-  font-size: 1rem;
+  justify-content: center;
+  gap: 6px;
+  text-align: center;
+  line-height: 1;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--ink);
 }
@@ -408,13 +466,19 @@ audio {
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  border-radius: 999px;
   font-size: 1.25rem;
   line-height: 1;
+  background: rgba(19, 35, 26, 0.001);
+  border: 1px solid transparent;
 }
 
 .status-local,
 .status-cloud {
-  background: transparent;
+  background: rgba(19, 35, 26, 0.001);
   border: none;
   padding: 0;
 }
@@ -448,11 +512,13 @@ body[data-theme="dark"] .icon-action-btn {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
 }
 
 .recording-actions button,
 .recording-actions a {
   width: auto;
+  margin-top: 0;
 }
 
 .recording-actions select {

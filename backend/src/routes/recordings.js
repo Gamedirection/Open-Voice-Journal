@@ -47,6 +47,12 @@ const upload = multer({
   limits: { fileSize: 50 * 1024 * 1024 }
 });
 
+function canAccessRecording(user, recording) {
+  if (!user || !recording) return false;
+  if (user.role === "admin") return true;
+  return Boolean(recording.ownerUserId && recording.ownerUserId === user.id);
+}
+
 recordingsRouter.get("/recordings", async (req, res) => {
   try {
     const parsedLimit = Number(req.query.limit || 50);
@@ -55,9 +61,12 @@ recordingsRouter.get("/recordings", async (req, res) => {
     const offset = Number.isFinite(parsedOffset) ? Math.max(parsedOffset, 0) : 0;
     const queryText = String(req.query.q || "").trim();
     const rows = await listRecordings(limit + 1, offset, queryText);
-    const hasMore = rows.length > limit;
+    const visible = req.user?.role === "admin"
+      ? rows
+      : rows.filter((entry) => entry.ownerUserId === req.user?.id);
+    const hasMore = visible.length > limit;
     res.json({
-      recordings: hasMore ? rows.slice(0, limit) : rows,
+      recordings: hasMore ? visible.slice(0, limit) : visible,
       pagination: {
         limit,
         offset,
@@ -71,7 +80,11 @@ recordingsRouter.get("/recordings", async (req, res) => {
 
 recordingsRouter.post("/recordings", async (req, res) => {
   try {
-    const recording = await createRecording(req.body || {});
+    const body = req.body || {};
+    const recording = await createRecording({
+      ...body,
+      ownerUserId: req.user?.id || body.ownerUserId || null
+    });
     res.status(201).json(recording);
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -82,6 +95,7 @@ recordingsRouter.get("/recordings/:id", async (req, res) => {
   try {
     const recording = await getRecording(req.params.id);
     if (!recording) return res.status(404).json({ error: "recording not found" });
+    if (!canAccessRecording(req.user, recording)) return res.status(403).json({ error: "forbidden" });
     return res.json(recording);
   } catch (error) {
     return res.status(500).json({ error: error.message });
@@ -92,6 +106,7 @@ recordingsRouter.delete("/recordings/:id", async (req, res) => {
   try {
     const recording = await getRecording(req.params.id);
     if (!recording) return res.status(404).json({ error: "recording not found" });
+    if (!canAccessRecording(req.user, recording)) return res.status(403).json({ error: "forbidden" });
 
     const fileName = recording.metadata?.audio?.fileName;
     if (fileName) {
@@ -112,6 +127,7 @@ recordingsRouter.post("/recordings/:id/transcribe", async (req, res) => {
   try {
     const recording = await getRecording(req.params.id);
     if (!recording) return res.status(404).json({ error: "recording not found" });
+    if (!canAccessRecording(req.user, recording)) return res.status(403).json({ error: "forbidden" });
 
     const recentJobs = await listJobs(500);
     const existing = recentJobs.find((job) =>
@@ -155,6 +171,7 @@ recordingsRouter.post("/recordings/:id/upload", upload.single("audio"), async (r
   try {
     const recording = await getRecording(req.params.id);
     if (!recording) return res.status(404).json({ error: "recording not found" });
+    if (!canAccessRecording(req.user, recording)) return res.status(403).json({ error: "forbidden" });
     if (!req.file) return res.status(400).json({ error: "audio file is required" });
 
     const durationSeconds = Number(req.body?.durationSeconds);
@@ -227,6 +244,7 @@ recordingsRouter.put("/recordings/:id/speakers", async (req, res) => {
   try {
     const recording = await getRecording(req.params.id);
     if (!recording) return res.status(404).json({ error: "recording not found" });
+    if (!canAccessRecording(req.user, recording)) return res.status(403).json({ error: "forbidden" });
     const labels = req.body?.labels;
     if (!labels || typeof labels !== "object") {
       return res.status(400).json({ error: "labels object is required" });
@@ -253,6 +271,7 @@ recordingsRouter.put("/recordings/:id/tags", async (req, res) => {
   try {
     const recording = await getRecording(req.params.id);
     if (!recording) return res.status(404).json({ error: "recording not found" });
+    if (!canAccessRecording(req.user, recording)) return res.status(403).json({ error: "forbidden" });
     const rawTags = req.body?.tags;
     if (!Array.isArray(rawTags)) {
       return res.status(400).json({ error: "tags array is required" });
@@ -273,6 +292,7 @@ recordingsRouter.put("/recordings/:id/captions", async (req, res) => {
   try {
     const recording = await getRecording(req.params.id);
     if (!recording) return res.status(404).json({ error: "recording not found" });
+    if (!canAccessRecording(req.user, recording)) return res.status(403).json({ error: "forbidden" });
     const rawAnchors = req.body?.anchors;
     if (!Array.isArray(rawAnchors)) {
       return res.status(400).json({ error: "anchors array is required" });
@@ -304,6 +324,7 @@ recordingsRouter.get("/recordings/:id/file", async (req, res) => {
   try {
     const recording = await getRecording(req.params.id);
     if (!recording) return res.status(404).json({ error: "recording not found" });
+    if (!canAccessRecording(req.user, recording)) return res.status(403).json({ error: "forbidden" });
 
     const fileName = recording.metadata?.audio?.fileName;
     if (!fileName) return res.status(404).json({ error: "audio file not found" });

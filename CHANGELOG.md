@@ -2,6 +2,28 @@
 
 All notable changes to Open-Voice-Journal will be documented in this file.
 
+## v0.3.2 - 2026-02-23
+
+- Added stricter logged-out behavior: local-only recording/uploads and session-local recordings view.
+- Added dedicated Account UI visibility rules and hid non-account settings when logged out.
+- Hardened admin action UX with better API error surfacing and safer non-JSON response handling.
+- Updated restore UX to require selecting a backup file for per-user restore.
+- Added admin settings/OpenAPI key response parsing hardening to avoid HTML/JSON parse crashes.
+- Added production image tag support in `docker-compose.prod-server.yml` via `OVJ_IMAGE_TAG`.
+- Updated production server env examples for `rec.gamedirection.net`.
+- Updated backend/OpenAPI version metadata to `v0.3.2`.
+
+## v0.3.1 - 2026-02-23
+
+- Added dedicated **Account** settings card with login/register/change-password/forgot-password UX.
+- Moved timezone controls into the main **Settings** card.
+- Added admin-only UI gating for **API Connections**, **Server Backup**, and **Users & Data Governance**.
+- Added admin open-signup policy controls (`auth.open_signup_enabled`) and registration enforcement (`signup_disabled`).
+- Added admin user role actions: promote/demote with safeguards (`cannot_self_demote`, `cannot_demote_last_active_admin`).
+- Added per-admin OpenAPI keys (create/list/revoke) with hash storage and one-time plaintext return on create.
+- Protected `/api/openapi.json` with admin bearer auth or valid `X-OpenAPI-Key`.
+- Added DB support for `app_settings` and `openapi_keys`, plus audit events for new admin actions.
+
 ## v0.3.0 - 2026-02-22
 
 - Added immediate playback preload improvements with cached duration/waveform metadata.

@@ -30,6 +30,15 @@ function normalizeBaseUrl(value) {
   return value.trim().replace(/\/$/, "");
 }
 
+function normalizeRequestUrl(url) {
+  const raw = String(url || "");
+  if (!raw) return raw;
+  if (raw.includes("/api/api/")) {
+    return raw.replace("/api/api/", "/api/");
+  }
+  return raw;
+}
+
 const SAVED_API_KEY = "ovj_api_base";
 const THEME_KEY = "ovj_theme";
 const UPLOAD_KEY = "ovj_upload_enabled";
@@ -46,6 +55,7 @@ const SUMMARY_TEMPLATE_KEY = "ovj_summary_template";
 const TIME_ZONE_KEY = "ovj_time_zone";
 const DEAD_AIR_THRESHOLD_KEY = "ovj_dead_air_threshold_seconds";
 const PLAYBACK_META_KEY_PREFIX = "ovj_playback_meta_v1_";
+const AUTH_TOKEN_KEY = "ovj_auth_token";
 
 let API_BASE = localStorage.getItem(SAVED_API_KEY) || resolveDefaultApiBase();
 API_BASE = normalizeBaseUrl(API_BASE);
@@ -119,6 +129,44 @@ const projectVersionEl = document.getElementById("projectVersion");
 const docsVersionEl = document.getElementById("docsVersion");
 const docsSwaggerLinkEl = document.getElementById("docsSwaggerLink");
 const docsOpenApiLinkEl = document.getElementById("docsOpenApiLink");
+const brandLogoEl = document.getElementById("brandLogo");
+const authEmailEl = document.getElementById("authEmail");
+const authPasswordEl = document.getElementById("authPassword");
+const authRegisterNameEl = document.getElementById("authRegisterName");
+const authRegisterEmailEl = document.getElementById("authRegisterEmail");
+const authRegisterPasswordEl = document.getElementById("authRegisterPassword");
+const authRegisterBtn = document.getElementById("authRegister");
+const authLoginBtn = document.getElementById("authLogin");
+const authLogoutBtn = document.getElementById("authLogout");
+const authLoginRowEl = document.getElementById("authLoginRow");
+const authLogoutRowEl = document.getElementById("authLogoutRow");
+const authChangePasswordGroupEl = document.getElementById("authChangePasswordGroup");
+const authCurrentPasswordEl = document.getElementById("authCurrentPassword");
+const authNewPasswordEl = document.getElementById("authNewPassword");
+const authChangePasswordBtn = document.getElementById("authChangePassword");
+const authResetEmailEl = document.getElementById("authResetEmail");
+const authForgotPasswordBtn = document.getElementById("authForgotPassword");
+const authStatusEl = document.getElementById("authStatus");
+const adminUsersCardEl = document.getElementById("adminUsersCard");
+const apiConnectionsCardEl = document.getElementById("apiConnectionsCard");
+const serverBackupCardEl = document.getElementById("serverBackupCard");
+const adminUsersQueryEl = document.getElementById("adminUsersQuery");
+const adminUsersStatusEl = document.getElementById("adminUsersStatus");
+const adminUsersRoleEl = document.getElementById("adminUsersRole");
+const adminUsersSortEl = document.getElementById("adminUsersSort");
+const adminUsersRefreshBtn = document.getElementById("adminUsersRefresh");
+const adminUsersStatusTextEl = document.getElementById("adminUsersStatusText");
+const adminUsersTableBodyEl = document.getElementById("adminUsersTableBody");
+const openSignupToggleEl = document.getElementById("openSignupToggle");
+const saveOpenSignupBtn = document.getElementById("saveOpenSignup");
+const openSignupStatusEl = document.getElementById("openSignupStatus");
+const openApiKeyNameEl = document.getElementById("openApiKeyName");
+const createOpenApiKeyBtn = document.getElementById("createOpenApiKey");
+const openApiKeyCreateStatusEl = document.getElementById("openApiKeyCreateStatus");
+const openApiKeyListEl = document.getElementById("openApiKeyList");
+const generalSettingsCardEl = document.getElementById("generalSettingsCard");
+const automationCardEl = document.getElementById("automationCard");
+const docsCardEl = document.getElementById("docsCard");
 
 const DEFAULT_SUMMARY_PROVIDER = "ollama_local";
 const DEFAULT_SUMMARY_MODEL = "qwen2.5:7b-instruct";
@@ -159,8 +207,116 @@ let cloudHasMore = true;
 let cloudLoading = false;
 let cloudQuery = "";
 let recordingsScrollTicking = false;
+let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
+let authUser = null;
 const CLOUD_PAGE_SIZE = 25;
 const SCROLL_LOAD_THRESHOLD_PX = 1000;
+const nativeFetch = window.fetch.bind(window);
+
+function shouldAttachAuth(url) {
+  const target = normalizeRequestUrl(String(url || ""));
+  if (!authToken) return false;
+  if (target.startsWith(`${API_BASE}/api/`)) return true;
+  if (target.startsWith("/api/")) return true;
+  return false;
+}
+
+window.fetch = async (input, init = {}) => {
+  const url = normalizeRequestUrl(typeof input === "string" ? input : (input?.url || ""));
+  const normalizedInput = typeof input === "string"
+    ? url
+    : (input instanceof Request ? new Request(url, input) : input);
+  const nextInit = { ...init };
+  const headers = new Headers(nextInit.headers || {});
+  if (shouldAttachAuth(url) && !headers.has("Authorization")) {
+    headers.set("Authorization", `Bearer ${authToken}`);
+  }
+  nextInit.headers = headers;
+  const response = await nativeFetch(normalizedInput, nextInit);
+  if (response.status === 401 && shouldAttachAuth(url)) {
+    setAuthState("", null);
+  }
+  return response;
+};
+
+async function readResponsePayload(response) {
+  const text = await response.text();
+  const contentType = String(response.headers.get("content-type") || "").toLowerCase();
+  const looksJson = contentType.includes("application/json") || text.trim().startsWith("{") || text.trim().startsWith("[");
+  if (looksJson) {
+    try {
+      return JSON.parse(text);
+    } catch (_error) {
+      // fall through
+    }
+  }
+  return text;
+}
+
+function getApiErrorMessage(response, payload, fallback) {
+  if (payload && typeof payload === "object" && payload.error) {
+    return `${payload.error} (${response.status})`;
+  }
+  if (typeof payload === "string" && payload.trim()) {
+    const trimmed = payload.trim().slice(0, 160);
+    return `${trimmed} (${response.status})`;
+  }
+  return `${fallback} (${response.status})`;
+}
+
+function setAuthState(token, user) {
+  authToken = String(token || "");
+  authUser = user || null;
+  if (!authUser) {
+    cloudRecordings = [];
+    cloudOffset = 0;
+    cloudHasMore = false;
+  }
+  if (authToken) {
+    localStorage.setItem(AUTH_TOKEN_KEY, authToken);
+  } else {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  }
+  if (authStatusEl) {
+    if (authUser) {
+      authStatusEl.textContent = `Logged in as ${authUser.email} (${authUser.role})`;
+    } else {
+      authStatusEl.textContent = "Not logged in.";
+    }
+  }
+  applyAdminVisibility();
+  applySettingsVisibility();
+  renderUploadModeStatus();
+}
+
+function isAdminSession() {
+  return Boolean(authUser && authUser.role === "admin");
+}
+
+function applyAdminVisibility() {
+  const show = isAdminSession();
+  if (adminUsersCardEl) adminUsersCardEl.hidden = !show;
+  if (apiConnectionsCardEl) apiConnectionsCardEl.hidden = !show;
+  if (serverBackupCardEl) serverBackupCardEl.hidden = !show;
+}
+
+function applySettingsVisibility() {
+  const loggedIn = Boolean(authUser);
+  if (authLoginRowEl) authLoginRowEl.hidden = loggedIn;
+  if (authLogoutRowEl) authLogoutRowEl.hidden = !loggedIn;
+  if (authChangePasswordGroupEl) authChangePasswordGroupEl.hidden = !loggedIn;
+  if (generalSettingsCardEl) generalSettingsCardEl.hidden = !loggedIn;
+  if (automationCardEl) automationCardEl.hidden = !loggedIn;
+  if (docsCardEl) docsCardEl.hidden = !loggedIn;
+}
+
+function formatBytes(value) {
+  const bytes = Number(value) || 0;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
 
 function createLocalRecording({ title, blob, downloadUrl, createdAt, durationSeconds = 0, captionAnchors = [] }) {
   const id = `local-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
@@ -581,7 +737,7 @@ function getCaptionAnchors(recording) {
     const end = Number.isFinite(nextAt) && nextAt > entry.at
       ? nextAt
       : (entry.at + 1.2);
-    const start = Math.max(0, Math.min(entry.at, previousEnd + 0.05));
+    const start = Math.max(0, Math.max(entry.at, previousEnd));
     if (end > start) {
       anchors.push({
         text: entry.text,
@@ -592,6 +748,68 @@ function getCaptionAnchors(recording) {
     }
   });
   return anchors;
+}
+
+function injectPauseAnchors(anchors, minGapSeconds = 1.1) {
+  if (!Array.isArray(anchors) || anchors.length < 2) return anchors || [];
+  const merged = [];
+  for (let i = 0; i < anchors.length; i += 1) {
+    const current = anchors[i];
+    merged.push(current);
+    if (i >= anchors.length - 1) continue;
+    const next = anchors[i + 1];
+    const gap = Number(next.start) - Number(current.end);
+    if (Number.isFinite(gap) && gap >= minGapSeconds) {
+      merged.push({
+        text: "[pause]",
+        start: Number(current.end),
+        end: Number(next.start)
+      });
+    }
+  }
+  return merged;
+}
+
+function buildTimedWordsFromCaptionAnchors(recording) {
+  const raw = recording?.metadata?.audio?.captionAnchors;
+  if (!Array.isArray(raw) || !raw.length) return [];
+  const anchors = raw
+    .map((entry) => ({
+      text: String(entry?.text || "").trim(),
+      at: Number(entry?.at)
+    }))
+    .filter((entry) => entry.text && Number.isFinite(entry.at) && entry.at >= 0)
+    .sort((a, b) => a.at - b.at);
+  if (!anchors.length) return [];
+
+  const timedWords = [];
+  for (let i = 0; i < anchors.length; i += 1) {
+    const current = anchors[i];
+    const nextAt = i < anchors.length - 1 ? anchors[i + 1].at : NaN;
+    const words = String(current.text).split(/\s+/).filter(Boolean);
+    if (!words.length) continue;
+    const chunkStart = current.at;
+    const naturalEnd = chunkStart + Math.max(0.45, words.length * 0.22);
+    const chunkEnd = Number.isFinite(nextAt)
+      ? Math.max(chunkStart + 0.2, Math.min(nextAt, naturalEnd))
+      : naturalEnd;
+    const span = Math.max(0.2, chunkEnd - chunkStart);
+    words.forEach((word, index) => {
+      timedWords.push({
+        word,
+        start: chunkStart + (span * (index / words.length)),
+        end: chunkStart + (span * ((index + 1) / words.length))
+      });
+    });
+    if (Number.isFinite(nextAt) && nextAt - chunkEnd >= 1.1) {
+      timedWords.push({
+        word: "[pause]",
+        start: chunkEnd,
+        end: nextAt
+      });
+    }
+  }
+  return timedWords;
 }
 
 function getCaptionAnchorsFromSentenceAnchors(recording) {
@@ -927,6 +1145,27 @@ async function loadVersion() {
   }
 }
 
+async function loadBranding() {
+  if (!brandLogoEl) return;
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/public/branding`);
+    if (!response.ok) {
+      brandLogoEl.hidden = true;
+      return;
+    }
+    const payload = await response.json();
+    const url = String(payload?.brandLogoUrl || "").trim();
+    if (!url) {
+      brandLogoEl.hidden = true;
+      return;
+    }
+    brandLogoEl.src = url;
+    brandLogoEl.hidden = false;
+  } catch (_error) {
+    brandLogoEl.hidden = true;
+  }
+}
+
 function collectApiCandidates() {
   const candidates = [API_BASE, resolveDefaultApiBase()];
   const hostname = window.location.hostname;
@@ -1100,6 +1339,10 @@ async function runSummaryFlow(recordingId, options = {}) {
 
 async function loadBackups() {
   if (!backupListEl) return;
+  if (!authUser || authUser.role !== "admin") {
+    backupListEl.textContent = "Admin only.";
+    return;
+  }
   backupListEl.textContent = "Loading backups...";
   try {
     const response = await fetch(`${API_BASE}/api/v1/backups`);
@@ -1219,6 +1462,10 @@ async function loadBackups() {
 
 async function createBackup() {
   if (!backupStatusEl) return;
+  if (!authUser || authUser.role !== "admin") {
+    backupStatusEl.textContent = "Admin only.";
+    return;
+  }
   backupStatusEl.textContent = "Creating backup...";
   try {
     const response = await fetch(`${API_BASE}/api/v1/backups`, { method: "POST" });
@@ -1256,11 +1503,26 @@ function updateUploadToggle(value) {
   uploadEnabled = value;
   localStorage.setItem(UPLOAD_KEY, String(value));
   if (uploadToggleEl) uploadToggleEl.checked = value;
-  if (uploadStatusEl) {
-    uploadStatusEl.textContent = value
-      ? "Uploads enabled by default."
-      : "Uploads disabled. Recordings stay on this device.";
+  renderUploadModeStatus();
+}
+
+function canUseCloudUploads() {
+  return Boolean(authUser);
+}
+
+function getEffectiveUploadEnabled() {
+  return canUseCloudUploads() && Boolean(uploadEnabled);
+}
+
+function renderUploadModeStatus() {
+  if (!uploadStatusEl) return;
+  if (!canUseCloudUploads()) {
+    uploadStatusEl.textContent = "Not logged in. Local recording only.";
+    return;
   }
+  uploadStatusEl.textContent = uploadEnabled
+    ? "Uploads enabled by default."
+    : "Uploads disabled. Recordings stay on this device.";
 }
 
 function setActiveTab(tabName) {
@@ -1289,6 +1551,14 @@ function shouldLoadMoreCloud() {
 }
 
 async function fetchCloudRecordings({ reset = false, append = false } = {}) {
+  if (!authUser) {
+    if (reset) {
+      cloudOffset = 0;
+      cloudHasMore = false;
+      cloudRecordings = [];
+    }
+    return;
+  }
   if (cloudLoading) return;
   cloudLoading = true;
   try {
@@ -1326,6 +1596,7 @@ async function fetchCloudRecordings({ reset = false, append = false } = {}) {
 }
 
 function queueRecordingsViewportRefresh() {
+  if (!authUser) return;
   if (recordingsScrollTicking) return;
   recordingsScrollTicking = true;
   requestAnimationFrame(async () => {
@@ -1370,8 +1641,8 @@ async function loadRecordings(options = {}) {
       .sort(
       (a, b) => new Date(b.createdAt) - new Date(a.createdAt)
     );
-    const cloudItems = cloudRecordings;
-    const combined = [...localItems, ...cloudRecordings];
+    const cloudItems = authUser ? cloudRecordings : [];
+    const combined = [...localItems, ...cloudItems];
 
     if (!combined.length) {
       recordingsListEl.textContent = "No recordings yet.";
@@ -1866,6 +2137,7 @@ async function loadRecordings(options = {}) {
           if (!timedMatched) {
             for (let i = segmentTimedIndex; i < timedWords.length; i += 1) {
               const candidate = timedWords[i];
+              if (isPauseMarker(candidate.word)) continue;
               if (Number.isFinite(candidate.start)) {
                 timedMatched = candidate;
                 segmentTimedIndex = i + 1;
@@ -2413,6 +2685,10 @@ function cleanWordToken(value) {
   return String(value || "").replace(/^[^\w']+|[^\w']+$/g, "").toLowerCase();
 }
 
+function isPauseMarker(value) {
+  return String(value || "").trim().toLowerCase() === "[pause]";
+}
+
 function clearTranscriptWordRegistry(recordingId) {
   if (!recordingId) return;
   transcriptWordRegistry.delete(recordingId);
@@ -2454,6 +2730,10 @@ function syncActiveTranscriptWord(recordingId, currentSeconds) {
 
 function buildTimedWords(recording) {
   const transcript = recording.metadata?.transcript || {};
+  const captionTimedWords = buildTimedWordsFromCaptionAnchors(recording);
+  if (captionTimedWords.length) {
+    return captionTimedWords;
+  }
   const durationHint = Number(getRecordingDurationHint(recording));
   if (Array.isArray(transcript.wordTimings) && transcript.wordTimings.length) {
     return transcript.wordTimings
@@ -2501,20 +2781,20 @@ function buildSentenceAnchors(recording) {
     }))
     .filter((entry) => entry.text && Number.isFinite(entry.start) && Number.isFinite(entry.end) && entry.end > entry.start);
   if (normalizedSegments.length) {
-    return normalizedSegments;
+    return injectPauseAnchors(normalizedSegments);
   }
   if (fromProvider.length) {
-    return fromProvider
+    return injectPauseAnchors(fromProvider
       .map((entry) => ({
         text: String(entry?.text || "").trim(),
         start: Number(entry?.start),
         end: Number(entry?.end)
       }))
-      .filter((entry) => entry.text && Number.isFinite(entry.start) && Number.isFinite(entry.end) && entry.end > entry.start);
+      .filter((entry) => entry.text && Number.isFinite(entry.start) && Number.isFinite(entry.end) && entry.end > entry.start));
   }
   const fromCaptions = getCaptionAnchors(recording);
   if (fromCaptions.length) {
-    return fromCaptions;
+    return injectPauseAnchors(fromCaptions);
   }
 
   const text = String(transcript.text || "").trim();
@@ -2528,7 +2808,7 @@ function buildSentenceAnchors(recording) {
   const totalChars = Math.max(1, sentences.reduce((acc, line) => acc + line.length, 0));
   let consumedChars = 0;
   let cursor = speechWindow.start;
-  return sentences.map((line) => {
+  const generated = sentences.map((line) => {
     const lineChars = Math.max(1, line.length);
     const startFraction = consumedChars / totalChars;
     consumedChars += lineChars;
@@ -2544,6 +2824,7 @@ function buildSentenceAnchors(recording) {
     cursor = Math.min(speechWindow.end, end);
     return { text: line, start, end };
   });
+  return injectPauseAnchors(generated);
 }
 
 function buildSentenceWordTimeline(anchors) {
@@ -3409,9 +3690,11 @@ async function startRecording() {
       stopLiveCaptions({ keepFinal: true });
       setLiveCaptionsStatus("Live captions complete.");
 
-      const shouldUpload = pendingStopActionOverride === "upload"
-        || (pendingStopActionOverride !== "local" && uploadEnabled);
-      const shouldPromptLocalDownload = !shouldUpload && uploadEnabled === false && pendingStopActionOverride !== "local";
+      const shouldUpload = canUseCloudUploads() && (
+        pendingStopActionOverride === "upload"
+        || (pendingStopActionOverride !== "local" && uploadEnabled)
+      );
+      const shouldPromptLocalDownload = !shouldUpload && getEffectiveUploadEnabled() === false && pendingStopActionOverride !== "local";
       pendingStopActionOverride = null;
 
       if (shouldUpload) {
@@ -3595,6 +3878,14 @@ function promptLocalDownload(reason) {
 
 async function uploadRecording(blob, title, localId, fallbackDurationSeconds = 0, captionAnchors = []) {
   if (!uploadStatusEl) return;
+  if (!canUseCloudUploads()) {
+    if (localId) {
+      markLocalRecording(localId, { uploadStatus: "local" });
+      loadRecordings();
+    }
+    uploadStatusEl.textContent = "Not logged in. Saved locally only.";
+    return;
+  }
   uploadStatusEl.textContent = "Preparing waveform...";
   try {
     const recording = await createRecording(title);
@@ -3679,6 +3970,10 @@ async function uploadRecording(blob, title, localId, fallbackDurationSeconds = 0
 
 async function uploadManualFile() {
   if (!manualStatusEl || !manualFileEl || !manualUploadBtn) return;
+  if (!canUseCloudUploads()) {
+    manualStatusEl.textContent = "Login required for manual cloud upload. Recording capture still works locally.";
+    return;
+  }
   const file = manualFileEl.files?.[0];
   if (!file) {
     manualStatusEl.textContent = "Please choose an audio file first.";
@@ -3732,6 +4027,461 @@ async function uploadManualFile() {
     manualStatusEl.textContent = `Upload failed: ${error.message}`;
   } finally {
     manualUploadBtn.disabled = false;
+  }
+}
+
+async function refreshAuthMe(silent = false) {
+  if (!authToken) {
+    setAuthState("", null);
+    return null;
+  }
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/auth/me`);
+    const isJson = response.headers.get("content-type")?.includes("application/json");
+    const payload = isJson ? await response.json() : await response.text();
+    if (!response.ok) {
+      if (!silent) {
+        const message = typeof payload === "string" ? payload : payload.error;
+        if (authStatusEl) authStatusEl.textContent = `Auth check failed: ${message || response.status}`;
+      }
+      setAuthState("", null);
+      return null;
+    }
+    setAuthState(authToken, payload.user || null);
+    return payload.user || null;
+  } catch (error) {
+    if (!silent && authStatusEl) authStatusEl.textContent = `Auth check failed: ${error.message}`;
+    return null;
+  }
+}
+
+async function registerAccount() {
+  if (!authRegisterEmailEl || !authRegisterPasswordEl) return;
+  const email = String(authRegisterEmailEl.value || "").trim();
+  const password = String(authRegisterPasswordEl.value || "");
+  const displayName = String(authRegisterNameEl?.value || "").trim();
+  if (!email || !password) {
+    if (authStatusEl) authStatusEl.textContent = "Registration email and password are required.";
+    return;
+  }
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/auth/register`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, displayName })
+    });
+    const isJson = response.headers.get("content-type")?.includes("application/json");
+    const payload = isJson ? await response.json() : await response.text();
+    if (!response.ok) {
+      const message = typeof payload === "string" ? payload : payload.error;
+      throw new Error(message || `Registration failed (${response.status})`);
+    }
+    authRegisterPasswordEl.value = "";
+    if (authStatusEl) authStatusEl.textContent = "Account created. You can sign in now.";
+  } catch (error) {
+    if (authStatusEl) authStatusEl.textContent = `Registration failed: ${error.message}`;
+  }
+}
+
+async function loadAdminAuthSettings() {
+  if (!isAdminSession()) return;
+  if (!openSignupStatusEl) return;
+  openSignupStatusEl.textContent = "Loading signup policy...";
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/admin/settings/auth`);
+    const payload = await readResponsePayload(response);
+    if (!response.ok) {
+      throw new Error(getApiErrorMessage(response, payload, "Signup settings failed"));
+    }
+    if (openSignupToggleEl) openSignupToggleEl.checked = Boolean(payload.openSignupEnabled);
+    openSignupStatusEl.textContent = `Open signup is ${payload.openSignupEnabled ? "enabled" : "disabled"}.`;
+  } catch (error) {
+    openSignupStatusEl.textContent = `Signup settings failed: ${error.message}`;
+  }
+}
+
+async function saveAdminAuthSettings() {
+  if (!isAdminSession()) return;
+  const openSignupEnabled = Boolean(openSignupToggleEl?.checked);
+  if (openSignupStatusEl) openSignupStatusEl.textContent = "Saving signup policy...";
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/admin/settings/auth`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ openSignupEnabled })
+    });
+    const payload = await readResponsePayload(response);
+    if (!response.ok) {
+      throw new Error(getApiErrorMessage(response, payload, "Save failed"));
+    }
+    if (openSignupStatusEl) {
+      openSignupStatusEl.textContent = `Open signup is ${payload.openSignupEnabled ? "enabled" : "disabled"}.`;
+    }
+  } catch (error) {
+    if (openSignupStatusEl) openSignupStatusEl.textContent = `Save failed: ${error.message}`;
+  }
+}
+
+function renderOpenApiKeys(keys) {
+  if (!openApiKeyListEl) return;
+  const rows = Array.isArray(keys) ? keys : [];
+  openApiKeyListEl.innerHTML = "";
+  if (!rows.length) {
+    openApiKeyListEl.textContent = "No OpenAPI keys yet.";
+    return;
+  }
+  rows.forEach((entry) => {
+    const item = document.createElement("div");
+    item.className = "recording-item";
+    const title = document.createElement("strong");
+    title.textContent = `${entry.name} (${entry.prefix}...)`;
+    const meta = document.createElement("p");
+    meta.className = "hint";
+    meta.textContent = `Created: ${formatTimestamp(entry.createdAt)} | Last used: ${entry.lastUsedAt ? formatTimestamp(entry.lastUsedAt) : "Never"} | ${entry.revokedAt ? "Revoked" : "Active"}`;
+    const actions = document.createElement("div");
+    actions.className = "inline-actions";
+    const revokeBtn = document.createElement("button");
+    revokeBtn.type = "button";
+    revokeBtn.textContent = "Revoke";
+    revokeBtn.disabled = Boolean(entry.revokedAt);
+    revokeBtn.addEventListener("click", async () => {
+      try {
+        const response = await fetch(`${API_BASE}/api/v1/admin/openapi-keys/${encodeURIComponent(String(entry.id || ""))}`, { method: "DELETE" });
+        const payload = await readResponsePayload(response);
+        if (!response.ok) throw new Error(getApiErrorMessage(response, payload, "Revoke failed"));
+        await loadOpenApiKeys();
+      } catch (error) {
+        if (openApiKeyCreateStatusEl) openApiKeyCreateStatusEl.textContent = `Revoke failed: ${error.message}`;
+      }
+    });
+    actions.appendChild(revokeBtn);
+    item.appendChild(title);
+    item.appendChild(meta);
+    item.appendChild(actions);
+    openApiKeyListEl.appendChild(item);
+  });
+}
+
+async function loadOpenApiKeys() {
+  if (!isAdminSession()) return;
+  if (!openApiKeyListEl) return;
+  openApiKeyListEl.textContent = "Loading OpenAPI keys...";
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/admin/openapi-keys`);
+    const payload = await readResponsePayload(response);
+    if (!response.ok) throw new Error(getApiErrorMessage(response, payload, "Load failed"));
+    renderOpenApiKeys(payload.keys || []);
+  } catch (error) {
+    openApiKeyListEl.textContent = `Load failed: ${error.message}`;
+  }
+}
+
+async function createOpenApiKeyEntry() {
+  if (!isAdminSession()) return;
+  const name = String(openApiKeyNameEl?.value || "").trim();
+  if (!name) {
+    if (openApiKeyCreateStatusEl) openApiKeyCreateStatusEl.textContent = "Key name is required.";
+    return;
+  }
+  if (openApiKeyCreateStatusEl) openApiKeyCreateStatusEl.textContent = "Creating key...";
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/admin/openapi-keys`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name })
+    });
+    const payload = await readResponsePayload(response);
+    if (!response.ok) throw new Error(getApiErrorMessage(response, payload, "Create failed"));
+    const keyText = String(payload.key || "");
+    if (openApiKeyCreateStatusEl) {
+      openApiKeyCreateStatusEl.textContent = `Created key (shown once): ${keyText}`;
+    }
+    if (openApiKeyNameEl) openApiKeyNameEl.value = "";
+    await loadOpenApiKeys();
+  } catch (error) {
+    if (openApiKeyCreateStatusEl) openApiKeyCreateStatusEl.textContent = `Create failed: ${error.message}`;
+  }
+}
+
+async function loginWithEmailPassword() {
+  if (!authEmailEl || !authPasswordEl) return;
+  const email = String(authEmailEl.value || "").trim();
+  const password = String(authPasswordEl.value || "");
+  if (!email || !password) {
+    if (authStatusEl) authStatusEl.textContent = "Email and password are required.";
+    return;
+  }
+  if (authStatusEl) authStatusEl.textContent = "Signing in...";
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password })
+    });
+    const isJson = response.headers.get("content-type")?.includes("application/json");
+    const payload = isJson ? await response.json() : await response.text();
+    if (!response.ok) {
+      const message = typeof payload === "string" ? payload : payload.error;
+      throw new Error(message || `Login failed (${response.status})`);
+    }
+    setAuthState(payload.token, payload.user || null);
+    authPasswordEl.value = "";
+    await loadRecordings({ refreshCloud: true, appendCloud: false });
+    await loadBackups();
+    if (isAdminSession()) {
+      await loadAdminUsers();
+      await loadAdminAuthSettings();
+      await loadOpenApiKeys();
+    }
+  } catch (error) {
+    if (authStatusEl) authStatusEl.textContent = `Login failed: ${error.message}`;
+  }
+}
+
+async function logoutCurrentSession() {
+  try {
+    if (authToken) {
+      await fetch(`${API_BASE}/api/v1/auth/logout`, { method: "POST" });
+    }
+  } catch (_error) {
+    // Ignore logout errors.
+  } finally {
+    setAuthState("", null);
+    await loadRecordings({ refreshCloud: true, appendCloud: false });
+    await loadBackups();
+  }
+}
+
+async function changeCurrentPassword() {
+  if (!authCurrentPasswordEl || !authNewPasswordEl) return;
+  const currentPassword = String(authCurrentPasswordEl.value || "");
+  const newPassword = String(authNewPasswordEl.value || "");
+  if (!currentPassword || !newPassword) {
+    if (authStatusEl) authStatusEl.textContent = "Current and new password are required.";
+    return;
+  }
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/auth/change-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ currentPassword, newPassword })
+    });
+    const isJson = response.headers.get("content-type")?.includes("application/json");
+    const payload = isJson ? await response.json() : await response.text();
+    if (!response.ok) {
+      const message = typeof payload === "string" ? payload : payload.error;
+      throw new Error(message || `Change password failed (${response.status})`);
+    }
+    authCurrentPasswordEl.value = "";
+    authNewPasswordEl.value = "";
+    if (authStatusEl) authStatusEl.textContent = "Password changed. Please log in again.";
+    await logoutCurrentSession();
+  } catch (error) {
+    if (authStatusEl) authStatusEl.textContent = `Password change failed: ${error.message}`;
+  }
+}
+
+async function sendForgotPassword() {
+  if (!authResetEmailEl) return;
+  const email = String(authResetEmailEl.value || "").trim();
+  if (!email) {
+    if (authStatusEl) authStatusEl.textContent = "Enter email for reset.";
+    return;
+  }
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/auth/forgot-password`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email })
+    });
+    const isJson = response.headers.get("content-type")?.includes("application/json");
+    const payload = isJson ? await response.json() : await response.text();
+    if (!response.ok) {
+      const message = typeof payload === "string" ? payload : payload.error;
+      throw new Error(message || `Reset request failed (${response.status})`);
+    }
+    if (authStatusEl) authStatusEl.textContent = "Reset link request accepted. Check server email logs.";
+  } catch (error) {
+    if (authStatusEl) authStatusEl.textContent = `Reset request failed: ${error.message}`;
+  }
+}
+
+async function loadAdminUsers() {
+  await refreshAuthMe(true);
+  if (!isAdminSession()) return;
+  if (!adminUsersCardEl || adminUsersCardEl.hidden) return;
+  if (!adminUsersTableBodyEl) return;
+  const query = encodeURIComponent(String(adminUsersQueryEl?.value || "").trim());
+  const status = encodeURIComponent(String(adminUsersStatusEl?.value || "").trim());
+  const role = encodeURIComponent(String(adminUsersRoleEl?.value || "").trim());
+  const sort = encodeURIComponent(String(adminUsersSortEl?.value || "created_desc"));
+  if (adminUsersStatusTextEl) adminUsersStatusTextEl.textContent = "Loading users...";
+  try {
+    const response = await fetch(`${API_BASE}/api/v1/admin/users?query=${query}&status=${status}&role=${role}&sort=${sort}&limit=200&offset=0`);
+    const isJson = response.headers.get("content-type")?.includes("application/json");
+    const payload = isJson ? await response.json() : await response.text();
+    if (!response.ok) {
+      const message = typeof payload === "string" ? payload : payload.error;
+      throw new Error(message || `Failed loading users (${response.status})`);
+    }
+    const rows = Array.isArray(payload.users) ? payload.users : [];
+    adminUsersTableBodyEl.textContent = "";
+    rows.forEach((user) => {
+      const userId = encodeURIComponent(String(user?.id || ""));
+      if (!userId) return;
+      const tr = document.createElement("tr");
+      const usage = user.usage || {};
+      const activity = user.usage?.lastActivityAt ? formatTimestamp(user.usage.lastActivityAt) : "Never";
+      tr.innerHTML = `
+        <td>${user.email || ""}</td>
+        <td>${user.displayName || ""}</td>
+        <td>${user.role || ""}</td>
+        <td>${user.status || ""}</td>
+        <td>${formatBytes(usage.audioBytesTotal || 0)}</td>
+        <td>${usage.recordingsTotal || 0}</td>
+        <td>${usage.transcriptCharsTotal || 0}</td>
+        <td>${usage.summariesTotal || 0}</td>
+        <td>${activity}</td>
+        <td><div class="inline-actions"></div><div class="hint user-action-status"></div></td>
+      `;
+      const actions = tr.querySelector(".inline-actions");
+      const actionStatus = tr.querySelector(".user-action-status");
+      const setRowStatus = (message) => {
+        if (actionStatus) actionStatus.textContent = message;
+      };
+      const blockBtn = document.createElement("button");
+      blockBtn.type = "button";
+      blockBtn.textContent = user.status === "blocked" ? "Unblock" : "Block";
+      blockBtn.addEventListener("click", async () => {
+        try {
+          const endpoint = user.status === "blocked" ? "unblock" : "block";
+          setRowStatus(`${endpoint}ing...`);
+          const response = await fetch(`${API_BASE}/api/v1/admin/users/${userId}/${endpoint}`, { method: "POST" });
+          const payload2 = await readResponsePayload(response);
+          if (!response.ok) {
+            setRowStatus(getApiErrorMessage(response, payload2, `${endpoint} failed`));
+            return;
+          }
+          setRowStatus("");
+          await loadAdminUsers();
+        } catch (error) {
+          setRowStatus(error.message || "Request failed");
+        }
+      });
+      const roleBtn = document.createElement("button");
+      roleBtn.type = "button";
+      if (user.role === "admin") {
+        roleBtn.textContent = "Demote";
+        roleBtn.disabled = Boolean(authUser && authUser.id === user.id);
+        roleBtn.addEventListener("click", async () => {
+          try {
+            setRowStatus("Demoting...");
+            const response = await fetch(`${API_BASE}/api/v1/admin/users/${userId}/demote`, { method: "POST" });
+            const payload2 = await readResponsePayload(response);
+            if (!response.ok) {
+              setRowStatus(getApiErrorMessage(response, payload2, "Demote failed"));
+              return;
+            }
+            setRowStatus("");
+            await loadAdminUsers();
+          } catch (error) {
+            setRowStatus(error.message || "Demote failed");
+          }
+        });
+      } else {
+        roleBtn.textContent = "Promote";
+        roleBtn.addEventListener("click", async () => {
+          try {
+            setRowStatus("Promoting...");
+            const response = await fetch(`${API_BASE}/api/v1/admin/users/${userId}/promote`, { method: "POST" });
+            const payload2 = await readResponsePayload(response);
+            if (!response.ok) {
+              setRowStatus(getApiErrorMessage(response, payload2, "Promote failed"));
+              return;
+            }
+            setRowStatus("");
+            await loadAdminUsers();
+          } catch (error) {
+            setRowStatus(error.message || "Promote failed");
+          }
+        });
+      }
+      const backupBtn = document.createElement("button");
+      backupBtn.type = "button";
+      backupBtn.textContent = "Backup";
+      backupBtn.addEventListener("click", async () => {
+        const response = await fetch(`${API_BASE}/api/v1/admin/users/${userId}/backup`, { method: "POST" });
+        const payload2 = await readResponsePayload(response);
+        if (!response.ok) {
+          alert(`Backup failed: ${(payload2 && payload2.error) || response.status}`);
+          return;
+        }
+        const blob = new Blob([JSON.stringify(payload2.payload, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement("a");
+        anchor.href = url;
+        anchor.download = payload2.backupFile || `${user.email}-backup.json`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+      });
+      const restoreBtn = document.createElement("button");
+      restoreBtn.type = "button";
+      restoreBtn.textContent = "Restore";
+      restoreBtn.addEventListener("click", async () => {
+        const picker = document.createElement("input");
+        picker.type = "file";
+        picker.accept = ".json,application/json";
+        picker.addEventListener("change", async () => {
+          const file = picker.files?.[0];
+          if (!file) {
+            setRowStatus("Restore canceled: backup file required.");
+            return;
+          }
+          try {
+            setRowStatus("Restoring...");
+            const formData = new FormData();
+            formData.append("backup", file, file.name);
+            const response = await fetch(`${API_BASE}/api/v1/admin/users/${user.id}/restore`, {
+              method: "POST",
+              body: formData
+            });
+            const payload2 = await readResponsePayload(response);
+            if (!response.ok) {
+              setRowStatus(getApiErrorMessage(response, payload2, "Restore failed"));
+              return;
+            }
+            setRowStatus("Restore complete.");
+            await loadAdminUsers();
+          } catch (error) {
+            setRowStatus(error.message || "Restore failed");
+          }
+        }, { once: true });
+        picker.click();
+      });
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.addEventListener("click", async () => {
+        const confirmWord = prompt(`Type DELETE to remove ${user.email}`);
+        if (confirmWord !== "DELETE") return;
+        const response = await fetch(`${API_BASE}/api/v1/admin/users/${userId}?confirm=DELETE`, { method: "DELETE" });
+        const payload2 = await readResponsePayload(response);
+        if (!response.ok) {
+          alert(`Delete failed: ${(payload2 && payload2.error) || response.status}`);
+          return;
+        }
+        await loadAdminUsers();
+      });
+      actions.appendChild(blockBtn);
+      actions.appendChild(roleBtn);
+      actions.appendChild(backupBtn);
+      actions.appendChild(restoreBtn);
+      actions.appendChild(deleteBtn);
+      adminUsersTableBodyEl.appendChild(tr);
+    });
+    if (adminUsersStatusTextEl) adminUsersStatusTextEl.textContent = `Loaded ${rows.length} users.`;
+  } catch (error) {
+    if (adminUsersStatusTextEl) adminUsersStatusTextEl.textContent = `Load failed: ${error.message}`;
   }
 }
 
@@ -3854,17 +4604,29 @@ if (recordStartBtn && recordStopBtn) {
     if (saveHoldTimer) clearTimeout(saveHoldTimer);
     saveHoldArmed = true;
     if (recordStatusEl) {
-      recordStatusEl.textContent = uploadEnabled
-        ? "Hold Save for 3s to force local-only save."
-        : "Hold Save for 3s to force upload.";
+      if (!canUseCloudUploads()) {
+        recordStatusEl.textContent = "Not logged in. Save will stay local.";
+      } else {
+        recordStatusEl.textContent = uploadEnabled
+          ? "Hold Save for 3s to force local-only save."
+          : "Hold Save for 3s to force upload.";
+      }
     }
     saveHoldTimer = setTimeout(() => {
       if (!saveHoldArmed) return;
-      stopActionOverride = uploadEnabled ? "local" : "upload";
+      if (!canUseCloudUploads()) {
+        stopActionOverride = "local";
+      } else {
+        stopActionOverride = uploadEnabled ? "local" : "upload";
+      }
       if (recordStatusEl) {
-        recordStatusEl.textContent = uploadEnabled
-          ? "Override set: this save will stay local."
-          : "Override set: this save will upload.";
+        if (!canUseCloudUploads()) {
+          recordStatusEl.textContent = "Override set: this save will stay local.";
+        } else {
+          recordStatusEl.textContent = uploadEnabled
+            ? "Override set: this save will stay local."
+            : "Override set: this save will upload.";
+        }
       }
     }, 3000);
   };
@@ -3952,6 +4714,34 @@ if (deadAirThresholdInputEl) {
 if (manualUploadBtn) {
   manualUploadBtn.addEventListener("click", uploadManualFile);
 }
+if (authLoginBtn) {
+  authLoginBtn.addEventListener("click", loginWithEmailPassword);
+}
+if (authRegisterBtn) {
+  authRegisterBtn.addEventListener("click", registerAccount);
+}
+if (authLogoutBtn) {
+  authLogoutBtn.addEventListener("click", logoutCurrentSession);
+}
+if (authChangePasswordBtn) {
+  authChangePasswordBtn.addEventListener("click", changeCurrentPassword);
+}
+if (authForgotPasswordBtn) {
+  authForgotPasswordBtn.addEventListener("click", sendForgotPassword);
+}
+if (adminUsersRefreshBtn) {
+  adminUsersRefreshBtn.addEventListener("click", loadAdminUsers);
+}
+if (adminUsersQueryEl) adminUsersQueryEl.addEventListener("input", loadAdminUsers);
+if (adminUsersStatusEl) adminUsersStatusEl.addEventListener("change", loadAdminUsers);
+if (adminUsersRoleEl) adminUsersRoleEl.addEventListener("change", loadAdminUsers);
+if (adminUsersSortEl) adminUsersSortEl.addEventListener("change", loadAdminUsers);
+if (saveOpenSignupBtn) {
+  saveOpenSignupBtn.addEventListener("click", saveAdminAuthSettings);
+}
+if (createOpenApiKeyBtn) {
+  createOpenApiKeyBtn.addEventListener("click", createOpenApiKeyEntry);
+}
 
 tabButtons.forEach((btn) => {
   btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
@@ -3964,13 +4754,22 @@ renderApiBase();
 renderAiSettings();
 renderTimeZoneSettings();
 renderDeadAirSettings();
+applyAdminVisibility();
+applySettingsVisibility();
 applyDefaultRecordingTitle(true);
 (async () => {
   await ensureReachableApiBase();
+  await refreshAuthMe(true);
   await checkHealth();
   await loadVersion();
+  await loadBranding();
   await loadRecordings({ refreshCloud: true, appendCloud: false });
   await loadBackups();
+  if (isAdminSession()) {
+    await loadAdminUsers();
+    await loadAdminAuthSettings();
+    await loadOpenApiKeys();
+  }
   setActiveTab(localStorage.getItem(TAB_KEY) || "record");
 })();
 
