@@ -2,6 +2,8 @@
 
 Open-Voice-Journal is a self-hosted, open-source transcription platform for teams that need secure voice memo workflows across web, PWA, and mobile.
 
+All hostnames, domains, and environment values shown in this README use anonymized examples. Replace them with your real production values.
+
 ## Latest Release
 
 - Current backend/API version: `v0.3.2`
@@ -258,14 +260,25 @@ MIT
 - For emulator, API host fallback is `10.0.2.2:8080`.
 - For a physical phone on LAN, access web UI via `http://<your-pc-ip>:8088` and ensure API is reachable at `<your-pc-ip>:8080`.
 
-## Android APK Build (Docker, Temporary Container)
+## Android App Updates and Builds (Docker)
 
-This builds the APK in a one-off Docker container while using your **host Android SDK**.
+This builds the APK in a one-off Docker container while using your **host Android SDK**. It is the recommended path for repeatable updates, especially when you want to keep the same signing key for install-over-update.
 
 Prereqs:
 - Docker Desktop
 - Android SDK installed on the host
 - Set `ANDROID_SDK_ROOT` if your SDK is not in `%LOCALAPPDATA%\Android\Sdk`
+
+### 1) One-time setup checks
+
+- Ensure the Android SDK has platform tools and build tools installed.
+- If you use `adb`, confirm it is on your PATH (or use `%ANDROID_SDK_ROOT%\platform-tools\adb.exe`).
+
+### 2) Bump app version for update installs
+
+Update both `versionCode` and `versionName` in `mobile/android/app/build.gradle`.
+
+### 3) Build a new debug APK via Docker
 
 Run:
 ```powershell
@@ -275,18 +288,39 @@ Run:
 APK output:
 `mobile/android/app/build/outputs/apk/debug/app-debug.apk`
 
+### 4) Install/update on a device
+
+Using `adb` (update in place):
+```powershell
+adb install -r mobile\android\app\build\outputs\apk\debug\app-debug.apk
+```
+
+If `adb` is not on PATH:
+```powershell
+& "$env:ANDROID_SDK_ROOT\platform-tools\adb.exe" install -r mobile\android\app\build\outputs\apk\debug\app-debug.apk
+```
+
+### 5) Verify API connectivity
+
+- For emulator, API host fallback is `10.0.2.2:8080`.
+- For physical phone on LAN, set the API URL in the app Settings to `http://<your-pc-ip>:8080`.
+
+### 6) Optional clean build
+
+If you want to force a clean Gradle build, delete the host cache folder `%USERPROFILE%\.gradle` before running the script again.
+
 ## Production Notes
 
 - If the web app and API are exposed on different ports (example: web `:3090`, API `:3089`), set the API URL in the Settings tab to `http://<server-ip>:3089`.
 - HTTPS deployments should expose the API via the same origin (reverse proxy `/api`) to avoid mixed-content blocking.
 
-### Prod Server Compose (`rec.gamedirection.net`)
+### Prod Server Compose (`ovj.example.com`)
 
 - `docker-compose.prod-server.yml` uses GHCR images for `web`, `api`, and `worker`.
 - Image tag is controlled with `OVJ_IMAGE_TAG` (defaults to `latest`).
 - Recommended `server.env` values:
-  - `DOMAIN=rec.gamedirection.net`
-  - `APP_PUBLIC_BASE_URL=https://rec.gamedirection.net`
+  - `DOMAIN=ovj.example.com`
+  - `APP_PUBLIC_BASE_URL=https://ovj.example.com`
   - `OVJ_IMAGE_TAG=v0.3.2`
 - If you run Nginx Proxy Manager separately, keep host port mapping:
   - web `3090 -> 80`

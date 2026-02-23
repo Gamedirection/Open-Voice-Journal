@@ -6,3 +6,4 @@ coverage/
 backend/uploads/
 backend/backups/
 server.env
+readme-notes.md
