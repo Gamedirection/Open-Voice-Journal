@@ -73,6 +73,10 @@ const saveApiBaseBtn = document.getElementById("saveApiBase");
 const useEmulatorBtn = document.getElementById("useEmulator");
 const useLocalhostBtn = document.getElementById("useLocalhost");
 const usePromptBtn = document.getElementById("usePrompt");
+const mobileApiBaseInputEl = document.getElementById("mobileApiBaseInput");
+const mobileSaveApiBaseBtn = document.getElementById("mobileSaveApiBase");
+const mobileUsePromptBtn = document.getElementById("mobileUsePrompt");
+const mobileApiBaseStatusEl = document.getElementById("mobileApiBaseStatus");
 const apiBaseLabelEl = document.getElementById("apiBaseLabel");
 const apiStatusEl = document.getElementById("apiStatus");
 const refreshHealthBtn = document.getElementById("refreshHealth");
@@ -1075,7 +1079,8 @@ async function getSummaryPreview(recordingId, options = {}) {
 function setApiBase(value) {
   const normalized = normalizeBaseUrl(value);
   if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
-    apiBaseLabelEl.textContent = "API URL must start with http:// or https://";
+    if (apiBaseLabelEl) apiBaseLabelEl.textContent = "API URL must start with http:// or https://";
+    if (mobileApiBaseStatusEl) mobileApiBaseStatusEl.textContent = "Invalid URL: use http:// or https://";
     return false;
   }
   API_BASE = normalized;
@@ -1089,8 +1094,14 @@ function setApiBase(value) {
 }
 
 function renderApiBase() {
-  apiBaseInputEl.value = API_BASE;
-  apiBaseLabelEl.textContent = `Using API: ${API_BASE} | page=${window.location.origin || window.location.protocol}`;
+  if (apiBaseInputEl) apiBaseInputEl.value = API_BASE;
+  if (mobileApiBaseInputEl) mobileApiBaseInputEl.value = API_BASE;
+  if (apiBaseLabelEl) {
+    apiBaseLabelEl.textContent = `Using API: ${API_BASE} | page=${window.location.origin || window.location.protocol}`;
+  }
+  if (mobileApiBaseStatusEl) {
+    mobileApiBaseStatusEl.textContent = `Using server: ${API_BASE}`;
+  }
   if (docsSwaggerLinkEl) docsSwaggerLinkEl.href = `${API_BASE}/api/docs`;
   if (docsOpenApiLinkEl) docsOpenApiLinkEl.href = `${API_BASE}/api/openapi.json`;
 }
@@ -4037,14 +4048,16 @@ async function refreshAuthMe(silent = false) {
   }
   try {
     const response = await fetch(`${API_BASE}/api/v1/auth/me`);
-    const isJson = response.headers.get("content-type")?.includes("application/json");
-    const payload = isJson ? await response.json() : await response.text();
+    const payload = await readResponsePayload(response);
     if (!response.ok) {
+      const message = typeof payload === "string" ? payload : payload?.error;
       if (!silent) {
-        const message = typeof payload === "string" ? payload : payload.error;
         if (authStatusEl) authStatusEl.textContent = `Auth check failed: ${message || response.status}`;
       }
-      setAuthState("", null);
+      // Keep stored token unless server explicitly rejects session/auth.
+      if (response.status === 401 || response.status === 403) {
+        setAuthState("", null);
+      }
       return null;
     }
     setAuthState(authToken, payload.user || null);
@@ -4492,6 +4505,18 @@ usePromptBtn.addEventListener("click", () => {
   const value = prompt("Enter API URL (example: http://192.168.1.85:8080)", API_BASE);
   if (value) setApiBase(value);
 });
+if (mobileSaveApiBaseBtn) {
+  mobileSaveApiBaseBtn.addEventListener("click", () => {
+    const next = String(mobileApiBaseInputEl?.value || "").trim();
+    setApiBase(next);
+  });
+}
+if (mobileUsePromptBtn) {
+  mobileUsePromptBtn.addEventListener("click", () => {
+    const value = prompt("Enter server API URL (example: https://rec.gamedirection.net/api)", API_BASE);
+    if (value) setApiBase(value);
+  });
+}
 
 refreshHealthBtn.addEventListener("click", checkHealth);
 createRecordingBtn.addEventListener("click", () => createRecording());

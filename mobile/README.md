@@ -1,6 +1,14 @@
-﻿# Mobile (Capacitor) Quick Start
+# Mobile (Capacitor) Quick Start
 
 This folder wraps the `../frontend` web app into an Android app.
+
+## Current Mobile Release
+
+- Android app version: `1.0.5` (`versionCode 6`)
+- Mobile package version: `0.3.3`
+- Includes:
+  - mobile **Select Server** input (saved on-device)
+  - improved session persistence (no forced re-login on transient API/network failures)
 
 ## Prerequisites
 
@@ -70,6 +78,7 @@ If `adb` is not on PATH:
 
 - For emulator, API host fallback is `10.0.2.2:8080`.
 - For physical phone on LAN, set the API URL in the app Settings to `http://<your-pc-ip>:8080`.
+- For production, set the API URL to your public endpoint, for example: `https://rec.gamedirection.net/api`.
 
 ### 6) Optional clean build
 
@@ -91,3 +100,6 @@ Then rebuild APK and install it over the existing app.
 - Keep backend running on host port `8080`.
 - Android emulator uses `10.0.2.2:8080` to reach host.
 - For physical phone on LAN, set the API URL in the app Settings to `http://<your-pc-ip>:8080`.
+
+
+

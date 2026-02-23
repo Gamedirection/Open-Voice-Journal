@@ -2,6 +2,13 @@
 
 All notable changes to Open-Voice-Journal will be documented in this file.
 
+## v0.3.3 - 2026-02-23
+
+- Added mobile-friendly **Select Server** input in the Account card so users can set and save desired API/server URL on-device.
+- Persisted server selection in local storage and mirrored it across mobile/server URL fields.
+- Improved mobile auth persistence behavior so transient API/network failures do not force logout; token is cleared only on explicit `401/403`.
+- Built and published refreshed Android debug APK `1.0.5` (`versionCode 6`) to releases.
+
 ## v0.3.2 - 2026-02-23
 
 - Added stricter logged-out behavior: local-only recording/uploads and session-local recordings view.

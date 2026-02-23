@@ -7,11 +7,13 @@ All hostnames, domains, and environment values shown in this README use anonymiz
 ## Latest Release
 
 - Current backend/API version: `v0.3.2`
-- Current Android app version: `1.0.3` (`versionCode 4`)
-- Current mobile package version: `0.3.0`
+- Current Android app version: `1.0.5` (`versionCode 6`)
+- Current mobile package version: `0.3.3`
 - Release date: `2026-02-23`
 
 Recent release highlights:
+- mobile "Select Server" input with persisted API URL selection
+- improved mobile session persistence (no forced logout on transient connectivity failures)
 - admin-gated settings and account card layout improvements
 - per-admin OpenAPI key lifecycle + protected `/api/openapi.json`
 - admin promote/demote safeguards and open-signup controls
