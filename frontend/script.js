@@ -43,6 +43,7 @@ const SAVED_API_KEY = "ovj_api_base";
 const THEME_KEY = "ovj_theme";
 const UPLOAD_KEY = "ovj_upload_enabled";
 const LIVE_CAPTIONS_KEY = "ovj_live_captions_enabled";
+const GPS_LOCATION_KEY = "ovj_gps_location_enabled";
 const DEBUG_TRANSCRIPT_TIMESTAMPS_KEY = "ovj_debug_transcript_timestamps";
 const TAB_KEY = "ovj_active_tab";
 const AUTO_TRANSCRIBE_KEY = "ovj_auto_transcribe";
@@ -65,6 +66,8 @@ let uploadEnabled = localStorage.getItem(UPLOAD_KEY);
 uploadEnabled = uploadEnabled === null ? true : uploadEnabled === "true";
 let liveCaptionsEnabled = localStorage.getItem(LIVE_CAPTIONS_KEY);
 liveCaptionsEnabled = liveCaptionsEnabled === null ? true : liveCaptionsEnabled === "true";
+let gpsLocationEnabled = localStorage.getItem(GPS_LOCATION_KEY);
+gpsLocationEnabled = gpsLocationEnabled === null ? false : gpsLocationEnabled === "true";
 let debugTranscriptTimestampsEnabled = localStorage.getItem(DEBUG_TRANSCRIPT_TIMESTAMPS_KEY);
 debugTranscriptTimestampsEnabled = debugTranscriptTimestampsEnabled === null ? true : debugTranscriptTimestampsEnabled === "true";
 
@@ -110,6 +113,7 @@ const backupListEl = document.getElementById("backupList");
 const themeToggleBtn = document.getElementById("themeToggle");
 const uploadToggleEl = document.getElementById("uploadToggle");
 const liveCaptionsToggleEl = document.getElementById("liveCaptionsToggle");
+const gpsLocationToggleEl = document.getElementById("gpsLocationToggle");
 const debugTranscriptTimestampsToggleEl = document.getElementById("debugTranscriptTimestampsToggle");
 const recordStartBtn = document.getElementById("recordStart");
 const recordStopBtn = document.getElementById("recordStop");
@@ -118,6 +122,7 @@ const liveCaptionsPanelEl = document.getElementById("liveCaptionsPanel");
 const liveCaptionsStatusEl = document.getElementById("liveCaptionsStatus");
 const liveCaptionsTextEl = document.getElementById("liveCaptionsText");
 const uploadStatusEl = document.getElementById("uploadStatus");
+const permissionStatusEl = document.getElementById("permissionStatus");
 const manualTitleEl = document.getElementById("manualTitle");
 const manualFileEl = document.getElementById("manualFile");
 const manualUploadBtn = document.getElementById("manualUpload");
@@ -266,6 +271,141 @@ function getApiErrorMessage(response, payload, fallback) {
     return `${trimmed} (${response.status})`;
   }
   return `${fallback} (${response.status})`;
+}
+
+function getMobileApkTag() {
+  try {
+    const capacitor = window.Capacitor;
+    if (!capacitor) return null;
+    const platform = typeof capacitor.getPlatform === "function" ? capacitor.getPlatform() : "";
+    const isNative = typeof capacitor.isNativePlatform === "function"
+      ? capacitor.isNativePlatform()
+      : Boolean(platform && platform !== "web");
+    if (platform === "android" || (isNative && /android/i.test(navigator.userAgent))) {
+      return "mobile";
+    }
+  } catch (_error) {
+    // Ignore platform detection errors.
+  }
+  return null;
+}
+
+async function getPermissionState(name) {
+  if (!navigator.permissions || typeof navigator.permissions.query !== "function") return "unknown";
+  try {
+    const status = await navigator.permissions.query({ name });
+    return String(status?.state || "unknown");
+  } catch (_error) {
+    return "unknown";
+  }
+}
+
+function isAllowedPermissionState(state) {
+  return state === "granted";
+}
+
+async function updatePermissionStatus() {
+  if (!permissionStatusEl) return;
+  const [micState, gpsState] = await Promise.all([
+    getPermissionState("microphone"),
+    getPermissionState("geolocation")
+  ]);
+  const micLabel = isAllowedPermissionState(micState)
+    ? "Microphone Permissions Allowed"
+    : "Microphone Permissions Not Allowed";
+  const gpsAllowed = gpsLocationEnabled && isAllowedPermissionState(gpsState);
+  const gpsLabel = gpsAllowed
+    ? "GPS Locations Allowed"
+    : "GPS Locations Not Allowed";
+  permissionStatusEl.textContent = `${micLabel} | ${gpsLabel}`;
+}
+
+function buildGpsLocationPayload(position) {
+  if (!position || !position.coords) return null;
+  const coords = position.coords;
+  const payload = {
+    latitude: Number(coords.latitude),
+    longitude: Number(coords.longitude),
+    accuracyMeters: Number(coords.accuracy),
+    capturedAt: new Date(position.timestamp || Date.now()).toISOString(),
+    provider: "geolocation"
+  };
+  if (!Number.isFinite(payload.latitude) || !Number.isFinite(payload.longitude)) return null;
+  if (!Number.isFinite(payload.accuracyMeters)) delete payload.accuracyMeters;
+  if (Number.isFinite(coords.altitude)) payload.altitude = Number(coords.altitude);
+  if (Number.isFinite(coords.altitudeAccuracy)) payload.altitudeAccuracy = Number(coords.altitudeAccuracy);
+  if (Number.isFinite(coords.heading)) payload.heading = Number(coords.heading);
+  if (Number.isFinite(coords.speed)) payload.speed = Number(coords.speed);
+  return payload;
+}
+
+async function getGpsLocationMetadata() {
+  if (!gpsLocationEnabled || !navigator.geolocation) return null;
+  return await new Promise((resolve) => {
+    let resolved = false;
+    const finish = (value) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(value);
+    };
+    const timeoutMs = 5000;
+    const timer = setTimeout(() => finish(null), timeoutMs + 250);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        clearTimeout(timer);
+        finish(buildGpsLocationPayload(position));
+      },
+      () => {
+        clearTimeout(timer);
+        finish(null);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: timeoutMs,
+        maximumAge: 15000
+      }
+    );
+  });
+}
+
+function normalizeCityTag(value) {
+  const clean = String(value || "")
+    .trim()
+    .replace(/[^\w\s-]/g, "")
+    .replace(/\s+/g, " ");
+  if (!clean) return null;
+  return clean.length > 40 ? clean.slice(0, 40).trim() : clean;
+}
+
+async function getNearestCityTagFromLocation(gpsLocation) {
+  if (!gpsLocation || !Number.isFinite(Number(gpsLocation.latitude)) || !Number.isFinite(Number(gpsLocation.longitude))) {
+    return null;
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 3500);
+  try {
+    const lat = Number(gpsLocation.latitude);
+    const lon = Number(gpsLocation.longitude);
+    const response = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}&zoom=10&addressdetails=1`,
+      {
+        headers: {
+          Accept: "application/json"
+        },
+        signal: controller.signal
+      }
+    );
+    if (!response.ok) return null;
+    const payload = await response.json();
+    const address = payload?.address || {};
+    const city = address.city || address.town || address.village || address.hamlet || address.county || "";
+    const normalized = normalizeCityTag(city);
+    return normalized || null;
+  } catch (_error) {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function setAuthState(token, user) {
@@ -1136,11 +1276,14 @@ async function loadVersion() {
   if (docsVersionEl) docsVersionEl.textContent = loadingText;
   try {
     const response = await fetch(`${API_BASE}/api/version`);
-    const isJson = response.headers.get("content-type")?.includes("application/json");
-    const payload = isJson ? await response.json() : await response.text();
-    if (!response.ok) {
-      const message = typeof payload === "string" ? payload : payload.error;
-      throw new Error(message || "Failed loading version");
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (_error) {
+      payload = null;
+    }
+    if (!response.ok || !payload?.version) {
+      throw new Error(`Version lookup failed (${response.status}).`);
     }
     const data = payload;
 
@@ -1150,9 +1293,15 @@ async function loadVersion() {
     if (projectVersionEl) projectVersionEl.textContent = versionLabel;
     if (docsVersionEl) docsVersionEl.textContent = versionLabel;
   } catch (error) {
-    const message = `Version unavailable: ${error.message}`;
-    if (projectVersionEl) projectVersionEl.textContent = message;
-    if (docsVersionEl) docsVersionEl.textContent = message;
+    console.error("[version] load failed", error);
+    if (projectVersionEl) {
+      projectVersionEl.textContent = "";
+      projectVersionEl.hidden = true;
+    }
+    if (docsVersionEl) {
+      docsVersionEl.textContent = "";
+      docsVersionEl.hidden = true;
+    }
   }
 }
 
@@ -1161,18 +1310,26 @@ async function loadBranding() {
   try {
     const response = await fetch(`${API_BASE}/api/v1/public/branding`);
     if (!response.ok) {
+      console.error(`[branding] lookup failed (${response.status})`);
       brandLogoEl.hidden = true;
       return;
     }
-    const payload = await response.json();
+    let payload = null;
+    try {
+      payload = await response.json();
+    } catch (_error) {
+      payload = null;
+    }
     const url = String(payload?.brandLogoUrl || "").trim();
     if (!url) {
+      console.error("[branding] brandLogoUrl missing");
       brandLogoEl.hidden = true;
       return;
     }
     brandLogoEl.src = url;
     brandLogoEl.hidden = false;
   } catch (_error) {
+    console.error("[branding] load failed", _error);
     brandLogoEl.hidden = true;
   }
 }
@@ -1211,10 +1368,25 @@ async function ensureReachableApiBase() {
 async function createRecording(titleOverride) {
   recordingResultEl.textContent = "Creating...";
   try {
+    const tags = [];
+    const mobileTag = getMobileApkTag();
+    if (mobileTag) tags.push(mobileTag);
+    const gpsLocation = await getGpsLocationMetadata();
+    if (gpsLocationEnabled && gpsLocation) {
+      const nearestCityTag = await getNearestCityTagFromLocation(gpsLocation);
+      if (nearestCityTag) tags.push(nearestCityTag);
+    }
+    const dedupedTags = Array.from(new Set(tags.map((tag) => String(tag || "").trim()).filter(Boolean)));
+    const metadata = {};
+    if (dedupedTags.length) metadata.tags = dedupedTags;
+    if (gpsLocation) metadata.location = gpsLocation;
     const response = await fetch(`${API_BASE}/api/v1/recordings`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: titleOverride || recordingTitleEl.value || "Test memo from app" })
+      body: JSON.stringify({
+        title: titleOverride || recordingTitleEl.value || "Test memo from app",
+        ...(Object.keys(metadata).length ? { metadata } : {})
+      })
     });
     const isJson = response.headers.get("content-type")?.includes("application/json");
     const payload = isJson ? await response.json() : await response.text();
@@ -3834,10 +4006,12 @@ async function requestMicrophonePermission() {
     if (recordStatusEl) {
       recordStatusEl.textContent = "Microphone permission granted.";
     }
+    updatePermissionStatus();
   } catch (error) {
     if (recordStatusEl) {
       recordStatusEl.textContent = `Microphone permission denied: ${error.message}`;
     }
+    updatePermissionStatus();
   }
 }
 
@@ -4591,6 +4765,15 @@ if (liveCaptionsToggleEl) {
   });
 }
 
+if (gpsLocationToggleEl) {
+  gpsLocationToggleEl.checked = Boolean(gpsLocationEnabled);
+  gpsLocationToggleEl.addEventListener("change", (event) => {
+    gpsLocationEnabled = Boolean(event.target.checked);
+    localStorage.setItem(GPS_LOCATION_KEY, String(gpsLocationEnabled));
+    updatePermissionStatus();
+  });
+}
+
 if (debugTranscriptTimestampsToggleEl) {
   debugTranscriptTimestampsToggleEl.checked = Boolean(debugTranscriptTimestampsEnabled);
   debugTranscriptTimestampsToggleEl.addEventListener("change", (event) => {
@@ -4679,6 +4862,8 @@ if (refreshRecordingsBtn) {
     loadRecordings({ refreshCloud: true, appendCloud: false });
   });
 }
+
+updatePermissionStatus();
 
 if (recordingsSearchEl) {
   recordingsSearchEl.addEventListener("input", () => {
