@@ -2,14 +2,14 @@ name: open-voice-journal-prod
 
 services:
   web:
-    image: ghcr.io/gamedirection/open-voice-journal-web:latest
+    image: ghcr.io/gamedirection/open-voice-journal-web:${OVJ_IMAGE_TAG:-latest}
     ports:
       - "80:80"
     depends_on:
       - api
 
   api:
-    image: ghcr.io/gamedirection/open-voice-journal-api:latest
+    image: ghcr.io/gamedirection/open-voice-journal-api:${OVJ_IMAGE_TAG:-latest}
     env_file:
       - .env
     environment:
@@ -37,7 +37,7 @@ services:
       - api
 
   worker:
-    image: ghcr.io/gamedirection/open-voice-journal-worker:latest
+    image: ghcr.io/gamedirection/open-voice-journal-worker:${OVJ_IMAGE_TAG:-latest}
     env_file:
       - .env
     environment:

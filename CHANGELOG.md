@@ -9,6 +9,13 @@ All notable changes to Open-Voice-Journal will be documented in this file.
 - Improved mobile auth persistence behavior so transient API/network failures do not force logout; token is cleared only on explicit `401/403`.
 - Built and published refreshed Android debug APK `1.0.5` (`versionCode 6`) to releases.
 
+## v0.3.4 - 2026-02-25
+
+- Disabled transcription timeout when `TRANSCRIPTION_TIMEOUT_MS=0` (timeouts remain enforced for positive values).
+- Added email alert to admins when a background job runs longer than one hour (requires SMTP config).
+- Centralized SMTP email sending helper for reuse across auth and worker flows.
+- Added configurable image tag support to `docker-compose.prod.yml` and updated examples to use `2026-02-25` tag (images published as `latest` and `2026-02-25`).
+
 ## v0.3.2 - 2026-02-23
 
 - Added stricter logged-out behavior: local-only recording/uploads and session-local recordings view.

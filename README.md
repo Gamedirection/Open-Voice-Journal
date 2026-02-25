@@ -191,7 +191,7 @@ Set transcription provider values in `.env` (required for real transcripts):
 - `TRANSCRIPTION_ENDPOINT_PATH` (default: `/v1/audio/transcriptions`)
 - `TRANSCRIPTION_MODEL` (default: `whisper-1`)
 - `TRANSCRIPTION_API_KEY` (API key for your transcription provider)
-- Optional: `TRANSCRIPTION_LANGUAGE`, `TRANSCRIPTION_TIMEOUT_MS`
+- Optional: `TRANSCRIPTION_LANGUAGE`, `TRANSCRIPTION_TIMEOUT_MS` (set to `0` to disable timeout)
 
 ### 2) Start stack
 
@@ -268,11 +268,11 @@ See `mobile/README.md` for Android build, update, and Docker-based APK instructi
 ### Prod Server Compose (`ovj.example.com`)
 
 - `docker-compose.prod-server.yml` uses GHCR images for `web`, `api`, and `worker`.
-- Image tag is controlled with `OVJ_IMAGE_TAG` (defaults to `latest`).
+- Image tag is controlled with `OVJ_IMAGE_TAG` (defaults to `latest`). Published tags include `latest` and `2026-02-25`.
 - Recommended `server.env` values:
   - `DOMAIN=ovj.example.com`
   - `APP_PUBLIC_BASE_URL=https://ovj.example.com`
-  - `OVJ_IMAGE_TAG=v0.3.2`
+  - `OVJ_IMAGE_TAG=2026-02-25`
 - If you run Nginx Proxy Manager separately, keep host port mapping:
   - web `3090 -> 80`
   - api `3089 -> 8080`

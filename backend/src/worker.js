@@ -3,13 +3,17 @@ import {
   completeJob,
   failJob,
   getRecording,
+  getJob,
+  listUsers,
   updateRecordingMetadata,
   updateRecordingStatus
 } from "./store/store.js";
 import { initStore } from "./store/store.js";
+import { isEmailConfigured, sendEmail } from "./services/email.js";
 import { transcribeRecording } from "./services/transcription.js";
 
 const POLL_MS = Number(process.env.WORKER_POLL_MS || 3000);
+const LONG_RUNNING_ALERT_MS = 1000 * 60 * 60;
 
 function buildSpeakerMetadata(text, providerSegments = [], existingLabels = {}) {
   const timedSentences = Array.isArray(providerSegments)
@@ -65,6 +69,46 @@ async function processJob(job) {
     return;
   }
 
+  const longRunningTimer = setTimeout(async () => {
+    try {
+      const current = await getJob(job.id);
+      if (!current || current.status !== "running") return;
+      if (!isEmailConfigured()) {
+        console.warn(`[worker] long-running job ${job.id} (email not configured)`);
+        return;
+      }
+      const admins = await listUsers({ role: "admin", status: "active", limit: 50, offset: 0 });
+      const fallbackEmail = String(process.env.APP_DEFAULT_ADMIN_EMAIL || "").trim().toLowerCase();
+      const recipients = admins.map((admin) => admin.email).filter(Boolean);
+      if (!recipients.length && fallbackEmail) {
+        recipients.push(fallbackEmail);
+      }
+      if (!recipients.length) {
+        console.warn(`[worker] long-running job ${job.id} (no admin recipients)`);
+        return;
+      }
+      const subject = "Open-Voice-Journal long-running job alert";
+      const startedAt = current.startedAt || job.startedAt || now;
+      const text = [
+        "A background job has been running for longer than one hour.",
+        "",
+        `Job ID: ${job.id}`,
+        `Job Type: ${job.type}`,
+        `Recording ID: ${recording.id}`,
+        `Recording Title: ${recording.title || "Untitled recording"}`,
+        `Started At: ${startedAt}`,
+        `Status: ${current.status}`
+      ].join("\n");
+      await sendEmail({
+        to: recipients,
+        subject,
+        text
+      });
+    } catch (error) {
+      console.warn("[worker] long-running job alert failed", error);
+    }
+  }, LONG_RUNNING_ALERT_MS);
+
   await updateRecordingStatus(recording.id, "processing");
   await updateRecordingMetadata(recording.id, {
     transcript: null,
@@ -116,6 +160,8 @@ async function processJob(job) {
       }
     });
     await failJob(job.id, message);
+  } finally {
+    clearTimeout(longRunningTimer);
   }
 }
 

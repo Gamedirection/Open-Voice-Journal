@@ -22,7 +22,14 @@ const TRANSCRIPTION_API_KEY = (
   ""
 ).trim();
 const TRANSCRIPTION_LANGUAGE = (process.env.TRANSCRIPTION_LANGUAGE || "").trim();
-const TRANSCRIPTION_TIMEOUT_MS = Math.max(1000, Number(process.env.TRANSCRIPTION_TIMEOUT_MS || 120000));
+const TRANSCRIPTION_TIMEOUT_RAW = Number(process.env.TRANSCRIPTION_TIMEOUT_MS ?? 120000);
+const TRANSCRIPTION_TIMEOUT_MS = Number.isFinite(TRANSCRIPTION_TIMEOUT_RAW)
+  ? TRANSCRIPTION_TIMEOUT_RAW
+  : 120000;
+const TRANSCRIPTION_TIMEOUT_ENABLED = TRANSCRIPTION_TIMEOUT_MS > 0;
+const TRANSCRIPTION_TIMEOUT_EFFECTIVE_MS = TRANSCRIPTION_TIMEOUT_ENABLED
+  ? Math.max(1000, TRANSCRIPTION_TIMEOUT_MS)
+  : 0;
 
 function normalizeBaseUrl(value) {
   return String(value || "").trim().replace(/\/+$/, "");
@@ -229,7 +236,9 @@ export async function transcribeRecording(recording) {
     headers.Authorization = `Bearer ${TRANSCRIPTION_API_KEY}`;
   }
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), TRANSCRIPTION_TIMEOUT_MS);
+  const timeout = TRANSCRIPTION_TIMEOUT_ENABLED
+    ? setTimeout(() => controller.abort(), TRANSCRIPTION_TIMEOUT_EFFECTIVE_MS)
+    : null;
   try {
     ({ response, payload } = await sendTranscriptionRequest(endpoint, headers, makeForm({ verbose: true }), controller));
     if (!response.ok && isRetryableFormatError(response.status)) {
@@ -240,11 +249,11 @@ export async function transcribeRecording(recording) {
     }
   } catch (error) {
     if (error?.name === "AbortError") {
-      throw new Error(`Transcription request timed out after ${TRANSCRIPTION_TIMEOUT_MS}ms.`);
+      throw new Error(`Transcription request timed out after ${TRANSCRIPTION_TIMEOUT_EFFECTIVE_MS}ms.`);
     }
     throw error;
   } finally {
-    clearTimeout(timeout);
+    if (timeout) clearTimeout(timeout);
   }
 
   if (!response.ok) {

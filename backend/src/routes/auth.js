@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { createHash, randomBytes } from "node:crypto";
-import nodemailer from "nodemailer";
+import { sendEmail } from "../services/email.js";
 import {
   createUser,
   getUserByEmail,
@@ -16,25 +16,6 @@ import { hashPassword, validatePasswordPolicy, verifyPassword } from "../utils/p
 export const authRouter = Router();
 
 const resetTokens = new Map();
-let smtpTransport = null;
-
-function getSmtpTransport() {
-  if (smtpTransport) return smtpTransport;
-  const host = String(process.env.SMTP_HOST || "").trim();
-  if (!host) return null;
-  smtpTransport = nodemailer.createTransport({
-    host,
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: String(process.env.SMTP_SECURE || "false").toLowerCase() === "true",
-    auth: process.env.SMTP_USER
-      ? {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASSWORD || ""
-      }
-      : undefined
-  });
-  return smtpTransport;
-}
 
 function hashToken(value) {
   return createHash("sha256").update(String(value || "")).digest("hex");
@@ -152,17 +133,13 @@ authRouter.post("/auth/forgot-password", async (req, res) => {
     const expiresAt = Date.now() + (1000 * 60 * 30);
     resetTokens.set(tokenHash, { userId: user.id, expiresAt, used: false });
     const resetLink = `${String(process.env.APP_PUBLIC_BASE_URL || "").replace(/\/$/, "") || "http://localhost:8088"}/?reset_token=${token}`;
-    const transporter = getSmtpTransport();
-    if (transporter) {
-      const from = String(process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || "noreply@open-voice-journal.local");
-      await transporter.sendMail({
-        from,
-        to: email,
-        subject: "Open-Voice-Journal password reset",
-        text: `Use this link to reset your password: ${resetLink}`,
-        html: `<p>Use this link to reset your password:</p><p><a href="${resetLink}">${resetLink}</a></p>`
-      });
-    } else {
+    const outcome = await sendEmail({
+      to: email,
+      subject: "Open-Voice-Journal password reset",
+      text: `Use this link to reset your password: ${resetLink}`,
+      html: `<p>Use this link to reset your password:</p><p><a href="${resetLink}">${resetLink}</a></p>`
+    });
+    if (!outcome.sent) {
       console.log(`[auth] password reset for ${email}: ${resetLink}`);
     }
     return res.json({ accepted: true });
