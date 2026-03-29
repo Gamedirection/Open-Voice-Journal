@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Open-Voice-Journal</title>
+    <link rel="icon" type="image/x-icon" href="img/fav.ico" />
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
@@ -11,7 +12,12 @@
       <header class="hero">
         <div class="hero-row">
           <div class="hero-brand">
-            <img id="brandLogo" class="brand-logo" alt="" hidden />
+            <img
+              id="brandLogo"
+              class="brand-logo"
+              src="img/LogoSquare-Transparent-Cropped-tight_OVJ.png"
+              alt="Open Voice Journal logo"
+            />
             <div>
             <h1>Open-Voice-Journal</h1>
             <p>Basic test app for web and Android APK validation.</p>
@@ -105,6 +111,10 @@
             <div class="button-row">
               <button id="mobileSaveApiBase" type="button">Save Server</button>
               <button id="mobileUsePrompt" type="button">Set Custom URL</button>
+            </div>
+            <div id="serverConnectionBadge" class="server-connection is-unknown" aria-live="polite">
+              <strong id="serverConnectionLabel">Server status: unknown</strong>
+              <span id="serverConnectionDetail">Saved server will be checked on this device.</span>
             </div>
             <p id="mobileApiBaseStatus" class="hint">Server URL is saved on this device.</p>
           </article>

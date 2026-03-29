@@ -2,6 +2,17 @@
 
 All notable changes to Open-Voice-Journal will be documented in this file.
 
+## v0.3.5 - 2026-03-29
+
+- Replaced the site and app header branding with `LogoSquare-Transparent-Cropped-tight_OVJ.png` and updated the favicon/app launcher assets.
+- Improved transcription request configurability with optional provider prompt/temperature forwarding for higher-quality transcripts.
+- Reworked speaker/person detection to preserve provider speaker IDs when available and use turn-based heuristics instead of alternating every sentence.
+- Added a clearer on-device server connection status indicator with explicit checking/connected/disconnected states.
+- Kept selected server and local AI/device settings available without requiring login so APK users can preconfigure the app before authenticating.
+- Hardened APK session persistence so transient connectivity/auth refresh issues do not immediately clear the saved session.
+- Bumped backend/mobile/OpenAPI release metadata to `v0.3.5`.
+- Built refreshed Android debug APK `1.0.6` (`versionCode 7`).
+
 ## v0.3.3 - 2026-02-23
 
 - Added mobile-friendly **Select Server** input in the Account card so users can set and save desired API/server URL on-device.

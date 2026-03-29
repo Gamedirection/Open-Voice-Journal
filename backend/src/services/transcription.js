@@ -22,6 +22,11 @@ const TRANSCRIPTION_API_KEY = (
   ""
 ).trim();
 const TRANSCRIPTION_LANGUAGE = (process.env.TRANSCRIPTION_LANGUAGE || "").trim();
+const TRANSCRIPTION_PROMPT = (process.env.TRANSCRIPTION_PROMPT || "").trim();
+const TRANSCRIPTION_TEMPERATURE_RAW = Number(process.env.TRANSCRIPTION_TEMPERATURE);
+const TRANSCRIPTION_TEMPERATURE = Number.isFinite(TRANSCRIPTION_TEMPERATURE_RAW)
+  ? TRANSCRIPTION_TEMPERATURE_RAW
+  : null;
 const TRANSCRIPTION_TIMEOUT_RAW = Number(process.env.TRANSCRIPTION_TIMEOUT_MS ?? 120000);
 const TRANSCRIPTION_TIMEOUT_MS = Number.isFinite(TRANSCRIPTION_TIMEOUT_RAW)
   ? TRANSCRIPTION_TIMEOUT_RAW
@@ -91,6 +96,15 @@ function normalizeWordTiming(word, fallbackStart = null, fallbackEnd = null) {
   };
 }
 
+function normalizeSpeakerId(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "") || null;
+}
+
 function detectTimestampScale(segments, wordTimings, durationHintSeconds = 0) {
   const values = [];
   (segments || []).forEach((segment) => {
@@ -143,7 +157,8 @@ function normalizeSegments(payload, durationHintSeconds = 0) {
           index,
           text,
           start: Number.isFinite(start) ? start : null,
-          end: Number.isFinite(end) ? end : null
+          end: Number.isFinite(end) ? end : null,
+          speakerId: normalizeSpeakerId(segment?.speakerId ?? segment?.speaker ?? segment?.speaker_label)
         };
       })
       .filter(Boolean)
@@ -217,6 +232,12 @@ export async function transcribeRecording(recording) {
     }
     if (TRANSCRIPTION_LANGUAGE) {
       form.append("language", TRANSCRIPTION_LANGUAGE);
+    }
+    if (TRANSCRIPTION_PROMPT) {
+      form.append("prompt", TRANSCRIPTION_PROMPT);
+    }
+    if (TRANSCRIPTION_TEMPERATURE !== null) {
+      form.append("temperature", String(TRANSCRIPTION_TEMPERATURE));
     }
     if (options.verbose) {
       form.append("response_format", "verbose_json");

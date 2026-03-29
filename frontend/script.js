@@ -80,6 +80,9 @@ const mobileApiBaseInputEl = document.getElementById("mobileApiBaseInput");
 const mobileSaveApiBaseBtn = document.getElementById("mobileSaveApiBase");
 const mobileUsePromptBtn = document.getElementById("mobileUsePrompt");
 const mobileApiBaseStatusEl = document.getElementById("mobileApiBaseStatus");
+const serverConnectionBadgeEl = document.getElementById("serverConnectionBadge");
+const serverConnectionLabelEl = document.getElementById("serverConnectionLabel");
+const serverConnectionDetailEl = document.getElementById("serverConnectionDetail");
 const apiBaseLabelEl = document.getElementById("apiBaseLabel");
 const apiStatusEl = document.getElementById("apiStatus");
 const refreshHealthBtn = document.getElementById("refreshHealth");
@@ -218,6 +221,7 @@ let cloudQuery = "";
 let recordingsScrollTicking = false;
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
 let authUser = null;
+let lastHealthSummary = "Not checked yet.";
 const CLOUD_PAGE_SIZE = 25;
 const SCROLL_LOAD_THRESHOLD_PX = 1000;
 const nativeFetch = window.fetch.bind(window);
@@ -242,9 +246,6 @@ window.fetch = async (input, init = {}) => {
   }
   nextInit.headers = headers;
   const response = await nativeFetch(normalizedInput, nextInit);
-  if (response.status === 401 && shouldAttachAuth(url)) {
-    setAuthState("", null);
-  }
   return response;
 };
 
@@ -433,6 +434,18 @@ function setAuthState(token, user) {
   renderUploadModeStatus();
 }
 
+function setServerConnectionState(state, label, detail) {
+  if (!serverConnectionBadgeEl) return;
+  serverConnectionBadgeEl.classList.remove("is-connected", "is-checking", "is-disconnected", "is-unknown");
+  serverConnectionBadgeEl.classList.add(`is-${state || "unknown"}`);
+  if (serverConnectionLabelEl) {
+    serverConnectionLabelEl.textContent = label || "Server status: unknown";
+  }
+  if (serverConnectionDetailEl) {
+    serverConnectionDetailEl.textContent = detail || `Selected server: ${API_BASE}`;
+  }
+}
+
 function isAdminSession() {
   return Boolean(authUser && authUser.role === "admin");
 }
@@ -449,9 +462,9 @@ function applySettingsVisibility() {
   if (authLoginRowEl) authLoginRowEl.hidden = loggedIn;
   if (authLogoutRowEl) authLogoutRowEl.hidden = !loggedIn;
   if (authChangePasswordGroupEl) authChangePasswordGroupEl.hidden = !loggedIn;
-  if (generalSettingsCardEl) generalSettingsCardEl.hidden = !loggedIn;
-  if (automationCardEl) automationCardEl.hidden = !loggedIn;
-  if (docsCardEl) docsCardEl.hidden = !loggedIn;
+  if (generalSettingsCardEl) generalSettingsCardEl.hidden = false;
+  if (automationCardEl) automationCardEl.hidden = false;
+  if (docsCardEl) docsCardEl.hidden = false;
 }
 
 function formatBytes(value) {
@@ -1221,9 +1234,11 @@ function setApiBase(value) {
   if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
     if (apiBaseLabelEl) apiBaseLabelEl.textContent = "API URL must start with http:// or https://";
     if (mobileApiBaseStatusEl) mobileApiBaseStatusEl.textContent = "Invalid URL: use http:// or https://";
+    setServerConnectionState("disconnected", "Server status: invalid URL", "Use an http:// or https:// server address.");
     return false;
   }
   API_BASE = normalized;
+  lastHealthSummary = "Saved. Checking server health...";
   localStorage.setItem(SAVED_API_KEY, API_BASE);
   renderApiBase();
   checkHealth();
@@ -1240,14 +1255,23 @@ function renderApiBase() {
     apiBaseLabelEl.textContent = `Using API: ${API_BASE} | page=${window.location.origin || window.location.protocol}`;
   }
   if (mobileApiBaseStatusEl) {
-    mobileApiBaseStatusEl.textContent = `Using server: ${API_BASE}`;
+    mobileApiBaseStatusEl.textContent = `Using server: ${API_BASE} | ${lastHealthSummary}`;
   }
   if (docsSwaggerLinkEl) docsSwaggerLinkEl.href = `${API_BASE}/api/docs`;
   if (docsOpenApiLinkEl) docsOpenApiLinkEl.href = `${API_BASE}/api/openapi.json`;
+  if (serverConnectionDetailEl) {
+    serverConnectionDetailEl.textContent = `Selected server: ${API_BASE}`;
+  }
+  if (serverConnectionLabelEl && !serverConnectionLabelEl.textContent.trim()) {
+    serverConnectionLabelEl.textContent = "Server status: saved";
+  }
 }
 
 async function checkHealth() {
+  lastHealthSummary = "Checking server health...";
   apiStatusEl.textContent = "Checking API...";
+  renderApiBase();
+  setServerConnectionState("checking", "Server status: checking", `Connecting to ${API_BASE}`);
   try {
     const response = await fetch(`${API_BASE}/api/health`);
     let data = null;
@@ -1257,15 +1281,31 @@ async function checkHealth() {
       data = null;
     }
     if (!data || !data.status) {
+      lastHealthSummary = response.ok ? "Health endpoint responded without status." : `Server returned ${response.status}`;
       apiStatusEl.textContent = response.ok ? "API response missing status." : `API error: ${response.status}`;
+      setServerConnectionState("disconnected", "Server status: issue detected", `${API_BASE} returned an unexpected health payload.`);
       return false;
     }
     const storageLabel = data.storage ? ` | storage: ${data.storage}` : "";
     const fallbackLabel = data.fallback ? " | fallback: on" : "";
     apiStatusEl.textContent = `${data.status} (db: ${data.db})${storageLabel}${fallbackLabel}`;
+    lastHealthSummary = response.ok ? "Connected" : `Server error ${response.status}`;
+    setServerConnectionState(
+      response.ok ? "connected" : "disconnected",
+      response.ok ? "Server status: connected" : "Server status: server error",
+      `${API_BASE} | db: ${data.db}${storageLabel}${fallbackLabel}`
+    );
+    if (mobileApiBaseStatusEl) {
+      mobileApiBaseStatusEl.textContent = `Using server: ${API_BASE} | ${lastHealthSummary}`;
+    }
     return response.ok;
   } catch (error) {
+    lastHealthSummary = `Unreachable: ${error.message}`;
     apiStatusEl.textContent = `API unreachable: ${error.message}`;
+    setServerConnectionState("disconnected", "Server status: disconnected", `${API_BASE} | ${error.message}`);
+    if (mobileApiBaseStatusEl) {
+      mobileApiBaseStatusEl.textContent = `Using server: ${API_BASE} | ${lastHealthSummary}`;
+    }
     return false;
   }
 }
@@ -1307,11 +1347,19 @@ async function loadVersion() {
 
 async function loadBranding() {
   if (!brandLogoEl) return;
+  const defaultLogoUrl = "img/LogoSquare-Transparent-Cropped-tight_OVJ.png";
+  brandLogoEl.onerror = () => {
+    if (!brandLogoEl.src.endsWith(defaultLogoUrl)) {
+      brandLogoEl.src = defaultLogoUrl;
+    }
+    brandLogoEl.hidden = false;
+  };
   try {
     const response = await fetch(`${API_BASE}/api/v1/public/branding`);
     if (!response.ok) {
       console.error(`[branding] lookup failed (${response.status})`);
-      brandLogoEl.hidden = true;
+      brandLogoEl.src = defaultLogoUrl;
+      brandLogoEl.hidden = false;
       return;
     }
     let payload = null;
@@ -1322,15 +1370,16 @@ async function loadBranding() {
     }
     const url = String(payload?.brandLogoUrl || "").trim();
     if (!url) {
-      console.error("[branding] brandLogoUrl missing");
-      brandLogoEl.hidden = true;
+      brandLogoEl.src = defaultLogoUrl;
+      brandLogoEl.hidden = false;
       return;
     }
     brandLogoEl.src = url;
     brandLogoEl.hidden = false;
   } catch (_error) {
     console.error("[branding] load failed", _error);
-    brandLogoEl.hidden = true;
+    brandLogoEl.src = defaultLogoUrl;
+    brandLogoEl.hidden = false;
   }
 }
 
@@ -4228,9 +4277,9 @@ async function refreshAuthMe(silent = false) {
       if (!silent) {
         if (authStatusEl) authStatusEl.textContent = `Auth check failed: ${message || response.status}`;
       }
-      // Keep stored token unless server explicitly rejects session/auth.
-      if (response.status === 401 || response.status === 403) {
-        setAuthState("", null);
+      setAuthState(authToken, null);
+      if (authStatusEl && (response.status === 401 || response.status === 403)) {
+        authStatusEl.textContent = "Saved session found, but this server did not accept it. Sign in again if needed.";
       }
       return null;
     }
@@ -4982,8 +5031,3 @@ applyDefaultRecordingTitle(true);
   }
   setActiveTab(localStorage.getItem(TAB_KEY) || "record");
 })();
-
-
-
-
-

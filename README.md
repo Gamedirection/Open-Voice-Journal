@@ -6,22 +6,18 @@ All hostnames, domains, and environment values shown in this README use anonymiz
 
 ## Latest Release
 
-- Current backend/API version: `v0.3.2`
-- Current Android app version: `1.0.5` (`versionCode 6`)
-- Current mobile package version: `0.3.3`
-- Release date: `2026-02-23`
+- Current backend/API version: `v0.3.5`
+- Current Android app version: `1.0.6` (`versionCode 7`)
+- Current mobile package version: `0.3.5`
+- Release date: `2026-03-29`
 
 Recent release highlights:
-- mobile "Select Server" input with persisted API URL selection
-- improved mobile session persistence (no forced logout on transient connectivity failures)
-- admin-gated settings and account card layout improvements
-- per-admin OpenAPI key lifecycle + protected `/api/openapi.json`
-- admin promote/demote safeguards and open-signup controls
-- faster scrubber preload and waveform playback behavior
-- clickable transcript + active word highlighting
-- live captions with subtitle (`.srt`) export
-- dead-air removal workflow with automatic re-transcription/summarization
-- tags/search/pagination and queue deduplication improvements
+- updated site/app branding and launcher assets
+- clearer server connection status in the APK and saved device-side server settings
+- stronger mobile session persistence with no immediate logout on transient failures
+- improved transcription tuning support via provider prompt/temperature forwarding
+- better person detection and speaker assignment using provider IDs and turn-based heuristics
+- refreshed Android debug APK `1.0.6` (`versionCode 7`)
 
 ## Vision
 
@@ -191,7 +187,7 @@ Set transcription provider values in `.env` (required for real transcripts):
 - `TRANSCRIPTION_ENDPOINT_PATH` (default: `/v1/audio/transcriptions`)
 - `TRANSCRIPTION_MODEL` (default: `whisper-1`)
 - `TRANSCRIPTION_API_KEY` (API key for your transcription provider)
-- Optional: `TRANSCRIPTION_LANGUAGE`, `TRANSCRIPTION_TIMEOUT_MS` (set to `0` to disable timeout)
+- Optional: `TRANSCRIPTION_LANGUAGE`, `TRANSCRIPTION_TIMEOUT_MS` (set to `0` to disable timeout), `TRANSCRIPTION_PROMPT`, `TRANSCRIPTION_TEMPERATURE`
 
 ### 2) Start stack
 
@@ -268,11 +264,11 @@ See `mobile/README.md` for Android build, update, and Docker-based APK instructi
 ### Prod Server Compose (`ovj.example.com`)
 
 - `docker-compose.prod-server.yml` uses GHCR images for `web`, `api`, and `worker`.
-- Image tag is controlled with `OVJ_IMAGE_TAG` (defaults to `latest`). Published tags include `latest` and `2026-02-25`.
+- Image tag is controlled with `OVJ_IMAGE_TAG` (defaults to `latest`). Published tags include `latest` and `v0.3.5`.
 - Recommended `server.env` values:
   - `DOMAIN=ovj.example.com`
   - `APP_PUBLIC_BASE_URL=https://ovj.example.com`
-  - `OVJ_IMAGE_TAG=2026-02-25`
+  - `OVJ_IMAGE_TAG=v0.3.5`
 - If you run Nginx Proxy Manager separately, keep host port mapping:
   - web `3090 -> 80`
   - api `3089 -> 8080`

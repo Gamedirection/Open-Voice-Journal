@@ -34,11 +34,10 @@ body {
 }
 
 .brand-logo {
-  width: 42px;
-  height: 42px;
-  border-radius: 8px;
-  object-fit: cover;
-  border: 1px solid var(--border);
+  width: auto;
+  max-width: min(220px, 42vw);
+  height: 52px;
+  object-fit: contain;
 }
 
 .app-shell { min-height: 100vh; padding: 28px; }
@@ -338,6 +337,52 @@ audio {
   background: linear-gradient(180deg, #3ac07e 0%, #1f7a4d 100%);
   border-radius: 999px;
   border: 1px solid rgba(19, 35, 26, 0.28);
+}
+
+.server-connection {
+  margin-top: 10px;
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(19, 35, 26, 0.05);
+}
+
+.server-connection strong {
+  font-size: 0.95rem;
+}
+
+.server-connection span {
+  font-size: 0.84rem;
+  color: var(--muted);
+}
+
+.server-connection.is-connected {
+  border-color: rgba(31, 122, 77, 0.42);
+  background: rgba(31, 122, 77, 0.12);
+}
+
+.server-connection.is-connected strong {
+  color: #165a39;
+}
+
+.server-connection.is-checking {
+  border-color: rgba(139, 106, 27, 0.38);
+  background: rgba(233, 210, 140, 0.28);
+}
+
+.server-connection.is-checking strong {
+  color: #6b5114;
+}
+
+.server-connection.is-disconnected {
+  border-color: rgba(143, 43, 43, 0.28);
+  background: rgba(143, 43, 43, 0.08);
+}
+
+.server-connection.is-disconnected strong {
+  color: #7d2424;
 }
 
 .toggle-row {

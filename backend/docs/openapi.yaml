@@ -1,7 +1,7 @@
 ﻿openapi: 3.0.3
 info:
   title: Open-Voice-Journal API
-  version: 0.3.2
+  version: 0.3.5
   description: API contract for recording ingestion, uploads, provider configuration, and summaries.
 servers:
   - url: http://localhost:8080
