@@ -1,7 +1,7 @@
 ﻿openapi: 3.0.3
 info:
   title: Open-Voice-Journal API
-  version: 0.3.5
+  version: 0.3.6
   description: API contract for recording ingestion, uploads, provider configuration, and summaries.
 servers:
   - url: http://localhost:8080
@@ -282,6 +282,96 @@ paths:
           description: Captions updated
         '404':
           description: Recording not found
+  /api/v1/notes:
+    get:
+      summary: List notes for the current user
+      parameters:
+        - name: recordingId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: includeStandalone
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        '200':
+          description: Notes listed
+    post:
+      summary: Create a note
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recordingId:
+                  type: string
+                  nullable: true
+                title:
+                  type: string
+                markdown:
+                  type: string
+      responses:
+        '201':
+          description: Note created
+  /api/v1/notes/{id}:
+    get:
+      summary: Get note by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Note found
+        '404':
+          description: Note not found
+    patch:
+      summary: Update a note
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                recordingId:
+                  type: string
+                  nullable: true
+                title:
+                  type: string
+                markdown:
+                  type: string
+      responses:
+        '200':
+          description: Note updated
+        '404':
+          description: Note not found
+    delete:
+      summary: Delete a note
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Note deleted
+        '404':
+          description: Note not found
   /api/v1/recordings/{id}/summaries:
     post:
       summary: Generate summary for recording

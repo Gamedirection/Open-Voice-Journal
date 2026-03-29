@@ -2,6 +2,16 @@
 
 All notable changes to Open-Voice-Journal will be documented in this file.
 
+## v0.3.6 - 2026-03-29
+
+- Reworked transcript word highlighting to use a single canonical timed-word timeline so matching stays closer to the spoken audio in both plain and Person modes.
+- Added first-class Markdown notes with standalone notes, recording-linked notes, timestamp insertion, later editing, and `.md` download support.
+- Added a preview-first note editor with basic Markdown formatting tools for notes created while recording or after the fact.
+- Added backend notes storage and authenticated notes API endpoints, including OpenAPI documentation.
+- Synced session-note drafts from local recording flow into uploaded cloud recordings after upload completes.
+- Bumped backend/mobile/OpenAPI release metadata to `v0.3.6`.
+- Built refreshed Android debug APK `1.0.7` (`versionCode 8`).
+
 ## v0.3.5 - 2026-03-29
 
 - Replaced the site and app header branding with `LogoSquare-Transparent-Cropped-tight_OVJ.png` and updated the favicon/app launcher assets.

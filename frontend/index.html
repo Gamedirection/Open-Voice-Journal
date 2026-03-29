@@ -27,6 +27,7 @@
           <nav class="tab-bar">
             <button class="tab-button is-active" type="button" data-tab="record">Record</button>
             <button class="tab-button" type="button" data-tab="recordings">Recordings</button>
+            <button class="tab-button" type="button" data-tab="notes">Notes</button>
             <button class="tab-button" type="button" data-tab="settings">Settings</button>
           </nav>
         </div>
@@ -61,6 +62,19 @@
             </div>
             <p id="manualStatus" class="hint">Select an audio file to upload.</p>
           </article>
+          <article class="card note-session-card">
+            <div class="card-header">
+              <h2>Session Notes</h2>
+              <button id="recordNoteTimestamp" type="button">Insert Timestamp</button>
+            </div>
+            <input id="recordNoteTitle" placeholder="Session note title" />
+            <div id="recordNoteEditor" class="note-editor-shell"></div>
+            <div class="button-row">
+              <button id="saveRecordNote" type="button">Save Session Note</button>
+              <button id="clearRecordNote" type="button">Clear Draft</button>
+            </div>
+            <p id="recordNoteStatus" class="hint">Write notes before, during, or after recording. Timestamp links will target the current recording moment.</p>
+          </article>
         </div>
       </section>
 
@@ -78,6 +92,25 @@
           </div>
           <input id="recordingsSearch" type="search" placeholder="Search titles, transcript text, or tags..." />
           <div id="recordingsList" class="recordings-list">No recordings yet.</div>
+        </article>
+      </section>
+
+      <section id="tab-notes" class="tab-panel">
+        <article class="card">
+          <div class="card-header">
+            <h2>Notes</h2>
+            <button id="createStandaloneNote" type="button">New Note</button>
+          </div>
+          <div id="standaloneNoteComposer" class="note-composer" hidden>
+            <input id="standaloneNoteTitle" placeholder="Standalone note title" />
+            <div id="standaloneNoteEditor" class="note-editor-shell"></div>
+            <div class="button-row">
+              <button id="saveStandaloneNote" type="button">Save Note</button>
+              <button id="cancelStandaloneNote" type="button">Close</button>
+            </div>
+            <p id="standaloneNoteStatus" class="hint">Standalone notes sync to your account.</p>
+          </div>
+          <div id="standaloneNotesList" class="recordings-list">No notes yet.</div>
         </article>
       </section>
 

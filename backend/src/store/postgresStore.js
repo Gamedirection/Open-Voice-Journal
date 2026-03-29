@@ -39,6 +39,18 @@ function mapSummary(row) {
   };
 }
 
+function mapNote(row) {
+  return {
+    id: row.id,
+    ownerUserId: row.owner_user_id,
+    recordingId: row.recording_id || null,
+    title: row.title,
+    markdown: row.markdown || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  };
+}
+
 function mapProviderConfig(row) {
   return {
     id: row.id,
@@ -185,6 +197,82 @@ export async function deleteRecording(id) {
   );
 
   return result.rows[0] ? mapRecording(result.rows[0]) : null;
+}
+
+export async function createNote(payload) {
+  const id = payload.id || randomUUID();
+  const result = await query(
+    `
+      INSERT INTO notes (id, owner_user_id, recording_id, title, markdown)
+      VALUES ($1, $2, $3, $4, $5)
+      RETURNING id, owner_user_id, recording_id, title, markdown, created_at, updated_at
+    `,
+    [id, payload.ownerUserId, payload.recordingId || null, payload.title || "Untitled note", String(payload.markdown || "")]
+  );
+  return mapNote(result.rows[0]);
+}
+
+export async function getNote(id) {
+  const result = await query(
+    `
+      SELECT id, owner_user_id, recording_id, title, markdown, created_at, updated_at
+      FROM notes
+      WHERE id = $1
+      LIMIT 1
+    `,
+    [id]
+  );
+  return result.rows[0] ? mapNote(result.rows[0]) : null;
+}
+
+export async function listNotes({ ownerUserId = "", recordingId = null, includeStandalone = true } = {}) {
+  const result = await query(
+    `
+      SELECT id, owner_user_id, recording_id, title, markdown, created_at, updated_at
+      FROM notes
+      WHERE ($1 = '' OR owner_user_id = $1)
+        AND ($2::text IS NULL OR recording_id = $2)
+        AND ($3::boolean = true OR recording_id IS NOT NULL)
+      ORDER BY updated_at DESC
+    `,
+    [String(ownerUserId || ""), recordingId, Boolean(includeStandalone)]
+  );
+  return result.rows.map(mapNote);
+}
+
+export async function updateNote(id, patch = {}) {
+  const current = await getNote(id);
+  if (!current) return null;
+  const result = await query(
+    `
+      UPDATE notes
+      SET title = $2,
+          markdown = $3,
+          recording_id = $4,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, owner_user_id, recording_id, title, markdown, created_at, updated_at
+    `,
+    [
+      id,
+      patch.title !== undefined ? (patch.title || current.title) : current.title,
+      patch.markdown !== undefined ? String(patch.markdown || "") : current.markdown,
+      patch.recordingId !== undefined ? (patch.recordingId || null) : current.recordingId
+    ]
+  );
+  return result.rows[0] ? mapNote(result.rows[0]) : null;
+}
+
+export async function deleteNote(id) {
+  const result = await query(
+    `
+      DELETE FROM notes
+      WHERE id = $1
+      RETURNING id, owner_user_id, recording_id, title, markdown, created_at, updated_at
+    `,
+    [id]
+  );
+  return result.rows[0] ? mapNote(result.rows[0]) : null;
 }
 
 export async function createSummary(payload) {

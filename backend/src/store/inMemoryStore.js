@@ -8,6 +8,7 @@ const state = {
   auditLogs: [],
   openApiKeys: new Map(),
   recordings: new Map(),
+  notes: new Map(),
   summaries: new Map(),
   providerConfigs: new Map(),
   jobs: new Map()
@@ -100,7 +101,66 @@ export function deleteRecording(id) {
     }
   }
 
+  for (const [noteId, note] of state.notes.entries()) {
+    if (note.recordingId === id) {
+      state.notes.delete(noteId);
+    }
+  }
+
   return existing;
+}
+
+export function createNote(payload) {
+  const now = new Date().toISOString();
+  const note = {
+    id: payload.id || randomUUID(),
+    ownerUserId: payload.ownerUserId,
+    recordingId: payload.recordingId || null,
+    title: payload.title || "Untitled note",
+    markdown: String(payload.markdown || ""),
+    createdAt: now,
+    updatedAt: now
+  };
+  state.notes.set(note.id, note);
+  return { ...note };
+}
+
+export function getNote(id) {
+  const note = state.notes.get(id);
+  return note ? { ...note } : null;
+}
+
+export function listNotes({ ownerUserId = "", recordingId = null, includeStandalone = true } = {}) {
+  return Array.from(state.notes.values())
+    .filter((note) => {
+      if (ownerUserId && note.ownerUserId !== ownerUserId) return false;
+      if (recordingId !== null) return note.recordingId === recordingId;
+      if (!includeStandalone && !note.recordingId) return false;
+      return true;
+    })
+    .sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt))
+    .map((note) => ({ ...note }));
+}
+
+export function updateNote(id, patch = {}) {
+  const current = state.notes.get(id);
+  if (!current) return null;
+  const updated = {
+    ...current,
+    ...(patch.title !== undefined ? { title: patch.title || current.title } : {}),
+    ...(patch.markdown !== undefined ? { markdown: String(patch.markdown || "") } : {}),
+    ...(patch.recordingId !== undefined ? { recordingId: patch.recordingId || null } : {}),
+    updatedAt: new Date().toISOString()
+  };
+  state.notes.set(id, updated);
+  return { ...updated };
+}
+
+export function deleteNote(id) {
+  const note = state.notes.get(id);
+  if (!note) return null;
+  state.notes.delete(id);
+  return { ...note };
 }
 
 export function createUser(payload) {

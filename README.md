@@ -6,18 +6,17 @@ All hostnames, domains, and environment values shown in this README use anonymiz
 
 ## Latest Release
 
-- Current backend/API version: `v0.3.5`
-- Current Android app version: `1.0.6` (`versionCode 7`)
-- Current mobile package version: `0.3.5`
+- Current backend/API version: `v0.3.6`
+- Current Android app version: `1.0.7` (`versionCode 8`)
+- Current mobile package version: `0.3.6`
 - Release date: `2026-03-29`
 
 Recent release highlights:
-- updated site/app branding and launcher assets
-- clearer server connection status in the APK and saved device-side server settings
-- stronger mobile session persistence with no immediate logout on transient failures
-- improved transcription tuning support via provider prompt/temperature forwarding
-- better person detection and speaker assignment using provider IDs and turn-based heuristics
-- refreshed Android debug APK `1.0.6` (`versionCode 7`)
+- more accurate transcript word-to-audio highlighting in both plain and Person modes
+- standalone and recording-linked Markdown notes with timestamp links and `.md` download
+- preview-first note editor with basic Markdown formatting tools
+- notes draft carryover from live recording into uploaded cloud recordings
+- refreshed Android debug APK `1.0.7` (`versionCode 8`)
 
 ## Vision
 
@@ -264,11 +263,11 @@ See `mobile/README.md` for Android build, update, and Docker-based APK instructi
 ### Prod Server Compose (`ovj.example.com`)
 
 - `docker-compose.prod-server.yml` uses GHCR images for `web`, `api`, and `worker`.
-- Image tag is controlled with `OVJ_IMAGE_TAG` (defaults to `latest`). Published tags include `latest` and `v0.3.5`.
+- Image tag is controlled with `OVJ_IMAGE_TAG` (defaults to `latest`). Published tags include `latest` and `v0.3.6`.
 - Recommended `server.env` values:
   - `DOMAIN=ovj.example.com`
   - `APP_PUBLIC_BASE_URL=https://ovj.example.com`
-  - `OVJ_IMAGE_TAG=v0.3.5`
+  - `OVJ_IMAGE_TAG=v0.3.6`
 - If you run Nginx Proxy Manager separately, keep host port mapping:
   - web `3090 -> 80`
   - api `3089 -> 8080`

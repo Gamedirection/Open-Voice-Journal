@@ -689,6 +689,98 @@ body[data-theme="dark"] .icon-action-btn {
   color: var(--ink);
 }
 
+.note-session-card,
+.note-composer,
+.recording-notes {
+  display: grid;
+  gap: 10px;
+}
+
+.note-editor-shell {
+  display: grid;
+  gap: 8px;
+}
+
+.note-editor-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.note-editor-toolbar button {
+  width: auto;
+  margin: 0;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: rgba(19, 35, 26, 0.08);
+  color: var(--ink);
+  border: 1px solid var(--border);
+}
+
+.note-editor-mode {
+  margin-left: auto;
+}
+
+.note-editor-surface,
+.note-editor-source {
+  min-height: 180px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 12px;
+}
+
+.note-editor-surface {
+  overflow-y: auto;
+  white-space: normal;
+}
+
+.note-editor-surface:focus,
+.note-editor-source:focus {
+  outline: 2px solid rgba(31, 122, 77, 0.22);
+  outline-offset: 1px;
+}
+
+.note-editor-surface p,
+.note-editor-surface ul,
+.note-editor-surface ol,
+.note-editor-surface blockquote,
+.note-editor-surface pre,
+.note-editor-surface h1,
+.note-editor-surface h2,
+.note-editor-surface h3 {
+  margin: 0 0 8px 0;
+}
+
+.note-editor-surface blockquote {
+  border-left: 3px solid rgba(31, 122, 77, 0.35);
+  padding-left: 10px;
+  color: var(--muted);
+}
+
+.note-editor-surface pre {
+  padding: 8px;
+  border-radius: 8px;
+  background: rgba(19, 35, 26, 0.06);
+  overflow-x: auto;
+}
+
+.note-editor-source {
+  width: 100%;
+  resize: vertical;
+  font-family: "Consolas", "SFMono-Regular", monospace;
+  line-height: 1.45;
+}
+
+.note-list-empty {
+  color: var(--muted);
+}
+
+.note-link {
+  color: var(--accent);
+}
+
 .transcript-segments {
   display: grid;
   gap: 6px;

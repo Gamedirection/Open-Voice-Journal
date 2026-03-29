@@ -94,6 +94,11 @@ export const updateRecordingStatus = (...args) => runStoreOperation("updateRecor
 export const updateRecordingMetadata = (...args) => runStoreOperation("updateRecordingMetadata", ...args);
 export const listRecordings = (...args) => runStoreOperation("listRecordings", ...args);
 export const deleteRecording = (...args) => runStoreOperation("deleteRecording", ...args);
+export const createNote = (...args) => runStoreOperation("createNote", ...args);
+export const getNote = (...args) => runStoreOperation("getNote", ...args);
+export const listNotes = (...args) => runStoreOperation("listNotes", ...args);
+export const updateNote = (...args) => runStoreOperation("updateNote", ...args);
+export const deleteNote = (...args) => runStoreOperation("deleteNote", ...args);
 export const createSummary = (...args) => runStoreOperation("createSummary", ...args);
 export const getSummary = (...args) => runStoreOperation("getSummary", ...args);
 export const listSummariesByRecording = (...args) => runStoreOperation("listSummariesByRecording", ...args);

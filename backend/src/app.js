@@ -10,6 +10,7 @@ import { summaryRouter } from "./routes/summaries.js";
 import { recordingsRouter } from "./routes/recordings.js";
 import { jobsRouter } from "./routes/jobs.js";
 import { backupsRouter } from "./routes/backups.js";
+import { notesRouter } from "./routes/notes.js";
 import { authRouter } from "./routes/auth.js";
 import { adminUsersRouter } from "./routes/adminUsers.js";
 import { adminSettingsRouter } from "./routes/adminSettings.js";
@@ -118,6 +119,7 @@ app.use("/api/v1", authRouter);
 app.use("/api/v1/ai/providers", requireAuth, requireAdmin, providerRouter);
 app.use("/api/v1", requireAuth, summaryRouter);
 app.use("/api/v1", requireAuth, recordingsRouter);
+app.use("/api/v1", requireAuth, notesRouter);
 app.use("/api/v1", requireAuth, jobsRouter);
 app.use("/api/v1", requireAuth, requireAdmin, backupsRouter);
 app.use("/api/v1", requireAuth, requireAdmin, adminUsersRouter);
@@ -135,4 +137,3 @@ start().catch((error) => {
   console.error("[api] failed to start", error);
   process.exit(1);
 });
-

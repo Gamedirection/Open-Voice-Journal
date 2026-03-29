@@ -4,13 +4,15 @@ This folder wraps the `../frontend` web app into an Android app.
 
 ## Current Mobile Release
 
-- Android app version: `1.0.6` (`versionCode 7`)
-- Mobile package version: `0.3.5`
+- Android app version: `1.0.7` (`versionCode 8`)
+- Mobile package version: `0.3.6`
 - Includes:
   - mobile **Select Server** input (saved on-device)
   - clearer server connection status indicator
   - improved session persistence (no forced re-login on transient API/network failures)
   - better speaker/person detection after transcription
+  - more accurate transcript word highlighting during playback
+  - standalone and recording-linked Markdown notes with timestamp links
 
 ## Prerequisites
 
@@ -102,5 +104,4 @@ Then rebuild APK and install it over the existing app.
 - Keep backend running on host port `8080`.
 - Android emulator uses `10.0.2.2:8080` to reach host.
 - For physical phone on LAN, set the API URL in the app Settings to `http://<your-pc-ip>:8080`.
-
 

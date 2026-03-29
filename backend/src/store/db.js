@@ -140,6 +140,18 @@ export async function initDb() {
   `);
 
   await query(`
+    CREATE TABLE IF NOT EXISTS notes (
+      id TEXT PRIMARY KEY,
+      owner_user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      recording_id TEXT REFERENCES recordings(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      markdown TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await query(`
     CREATE TABLE IF NOT EXISTS jobs (
       id TEXT PRIMARY KEY,
       type TEXT NOT NULL,
@@ -157,6 +169,8 @@ export async function initDb() {
 
   await query("CREATE INDEX IF NOT EXISTS idx_jobs_status_created_at ON jobs (status, created_at);");
   await query("CREATE INDEX IF NOT EXISTS idx_recordings_owner_created_at ON recordings (owner_user_id, created_at DESC);");
+  await query("CREATE INDEX IF NOT EXISTS idx_notes_owner_updated_at ON notes (owner_user_id, updated_at DESC);");
+  await query("CREATE INDEX IF NOT EXISTS idx_notes_recording_updated_at ON notes (recording_id, updated_at DESC);");
   await query("CREATE INDEX IF NOT EXISTS idx_users_email ON users (LOWER(email));");
   await query("CREATE INDEX IF NOT EXISTS idx_users_role_status ON users (role, status);");
   await query("CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions (user_id);");

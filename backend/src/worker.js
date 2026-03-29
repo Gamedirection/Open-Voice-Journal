@@ -58,6 +58,10 @@ function countWords(text) {
   return String(text || "").trim().split(/\s+/).filter(Boolean).length;
 }
 
+function normalizeToken(value) {
+  return String(value || "").replace(/^[^\p{L}\p{N}']+|[^\p{L}\p{N}']+$/gu, "").toLowerCase();
+}
+
 function endsWithTerminalPunctuation(text) {
   return /[.!?]["')\]]*$/.test(String(text || "").trim());
 }
@@ -150,6 +154,68 @@ function buildSpeakerMetadata(text, providerSegments = [], existingLabels = {}) 
   };
 }
 
+function alignTimedWordsToSegments(wordTimings = [], speakerSegments = []) {
+  const timedWords = Array.isArray(wordTimings)
+    ? wordTimings
+      .map((entry) => ({
+        word: String(entry?.word || "").trim(),
+        start: Number(entry?.start),
+        end: Number(entry?.end)
+      }))
+      .filter((entry) => entry.word && Number.isFinite(entry.start))
+    : [];
+  if (!timedWords.length) return null;
+  const normalizedSegments = Array.isArray(speakerSegments)
+    ? speakerSegments
+      .map((segment) => ({
+        speakerId: String(segment?.speakerId || "").trim() || null,
+        start: Number(segment?.start),
+        end: Number(segment?.end),
+        tokens: String(segment?.text || "").split(/\s+/).map(normalizeToken).filter(Boolean)
+      }))
+      .filter((segment) => segment.speakerId && segment.tokens.length)
+    : [];
+  if (!normalizedSegments.length) {
+    return timedWords.map((entry) => ({ ...entry, speakerId: null }));
+  }
+
+  const assigned = timedWords.map((entry) => ({ ...entry, speakerId: null }));
+  let cursor = 0;
+  normalizedSegments.forEach((segment) => {
+    let lastMatch = cursor;
+    for (const token of segment.tokens) {
+      for (let i = lastMatch; i < assigned.length; i += 1) {
+        const candidate = assigned[i];
+        const candidateToken = normalizeToken(candidate.word);
+        if (!candidateToken) continue;
+        if (candidateToken !== token) continue;
+        candidate.speakerId = segment.speakerId;
+        lastMatch = i + 1;
+        cursor = Math.max(cursor, i);
+        break;
+      }
+    }
+
+    assigned.forEach((entry) => {
+      if (entry.speakerId) return;
+      if (Number.isFinite(segment.start) && entry.start < segment.start - 0.08) return;
+      if (Number.isFinite(segment.end) && Number(entry.end || entry.start) > segment.end + 0.08) return;
+      if (!Number.isFinite(segment.start) && !Number.isFinite(segment.end)) return;
+      entry.speakerId = segment.speakerId;
+    });
+  });
+
+  let lastSpeakerId = null;
+  assigned.forEach((entry) => {
+    if (entry.speakerId) {
+      lastSpeakerId = entry.speakerId;
+    } else if (lastSpeakerId) {
+      entry.speakerId = lastSpeakerId;
+    }
+  });
+  return assigned;
+}
+
 async function processJob(job) {
   if (job.type !== "transcription") {
     await completeJob(job.id, { skipped: true, reason: `unsupported job type '${job.type}'` });
@@ -228,6 +294,7 @@ async function processJob(job) {
         segments: speakerMeta?.segments || null,
         providerSegments: transcript.segments || null,
         wordTimings: transcript.wordTimings || null,
+        timedWords: alignTimedWordsToSegments(transcript.wordTimings || [], speakerMeta?.segments || transcript.segments || []),
         updatedAt: new Date().toISOString()
       },
       speakers: speakerMeta

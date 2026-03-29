@@ -57,6 +57,8 @@ const TIME_ZONE_KEY = "ovj_time_zone";
 const DEAD_AIR_THRESHOLD_KEY = "ovj_dead_air_threshold_seconds";
 const PLAYBACK_META_KEY_PREFIX = "ovj_playback_meta_v1_";
 const AUTH_TOKEN_KEY = "ovj_auth_token";
+const LOCAL_NOTES_KEY = "ovj_local_notes_v1";
+const RECORD_NOTE_DRAFT_KEY = "ovj_record_note_draft_v1";
 
 let API_BASE = localStorage.getItem(SAVED_API_KEY) || resolveDefaultApiBase();
 API_BASE = normalizeBaseUrl(API_BASE);
@@ -130,10 +132,24 @@ const manualTitleEl = document.getElementById("manualTitle");
 const manualFileEl = document.getElementById("manualFile");
 const manualUploadBtn = document.getElementById("manualUpload");
 const manualStatusEl = document.getElementById("manualStatus");
+const recordNoteTitleEl = document.getElementById("recordNoteTitle");
+const recordNoteEditorEl = document.getElementById("recordNoteEditor");
+const recordNoteTimestampBtn = document.getElementById("recordNoteTimestamp");
+const saveRecordNoteBtn = document.getElementById("saveRecordNote");
+const clearRecordNoteBtn = document.getElementById("clearRecordNote");
+const recordNoteStatusEl = document.getElementById("recordNoteStatus");
 const micEnableBtn = document.getElementById("micEnable");
 const recordingsListEl = document.getElementById("recordingsList");
 const recordingsSearchEl = document.getElementById("recordingsSearch");
 const refreshRecordingsBtn = document.getElementById("refreshRecordings");
+const createStandaloneNoteBtn = document.getElementById("createStandaloneNote");
+const standaloneNoteComposerEl = document.getElementById("standaloneNoteComposer");
+const standaloneNoteTitleEl = document.getElementById("standaloneNoteTitle");
+const standaloneNoteEditorEl = document.getElementById("standaloneNoteEditor");
+const saveStandaloneNoteBtn = document.getElementById("saveStandaloneNote");
+const cancelStandaloneNoteBtn = document.getElementById("cancelStandaloneNote");
+const standaloneNoteStatusEl = document.getElementById("standaloneNoteStatus");
+const standaloneNotesListEl = document.getElementById("standaloneNotesList");
 const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
 const tabPanels = Array.from(document.querySelectorAll(".tab-panel"));
 const visualizerCanvas = document.getElementById("recordVisualizer");
@@ -196,6 +212,7 @@ const recordingTaskQueues = new Map();
 const playbackControllers = new Map();
 const playbackLoaders = new Map();
 const transcriptWordRegistry = new Map();
+const notesCache = new Map();
 
 let autoTranscribeEnabled = localStorage.getItem(AUTO_TRANSCRIBE_KEY);
 autoTranscribeEnabled = autoTranscribeEnabled === null ? false : autoTranscribeEnabled === "true";
@@ -222,6 +239,7 @@ let recordingsScrollTicking = false;
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
 let authUser = null;
 let lastHealthSummary = "Not checked yet.";
+let recordSessionNoteDraft = readRecordSessionNoteDraft();
 const CLOUD_PAGE_SIZE = 25;
 const SCROLL_LOAD_THRESHOLD_PX = 1000;
 const nativeFetch = window.fetch.bind(window);
@@ -416,6 +434,7 @@ function setAuthState(token, user) {
     cloudRecordings = [];
     cloudOffset = 0;
     cloudHasMore = false;
+    notesCache.clear();
   }
   if (authToken) {
     localStorage.setItem(AUTH_TOKEN_KEY, authToken);
@@ -432,6 +451,7 @@ function setAuthState(token, user) {
   applyAdminVisibility();
   applySettingsVisibility();
   renderUploadModeStatus();
+  renderStandaloneNotes();
 }
 
 function setServerConnectionState(state, label, detail) {
@@ -608,43 +628,905 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;");
 }
 
+function applyInlineMarkdown(value) {
+  const escaped = escapeHtml(value);
+  return escaped
+    .replace(/\[([^\]]+)\]\(#t=([0-9.]+)\)/g, '<a href="#t=$2" class="note-link" data-seek-seconds="$2">$1</a>')
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^)]+)\)/g, '<a href="$2" target="_blank" rel="noreferrer">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/\*([^*]+)\*/g, "<em>$1</em>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>");
+}
+
 function markdownToHtml(markdown) {
   const lines = String(markdown || "").split(/\r?\n/);
   const html = [];
   let inList = false;
-  for (const line of lines) {
-    if (line.startsWith("- ")) {
-      if (!inList) {
-        html.push("<ul>");
-        inList = true;
-      }
-      html.push(`<li>${escapeHtml(line.slice(2))}</li>`);
-      continue;
-    }
+  let inOrderedList = false;
+  let inQuote = false;
+  let inCode = false;
+  const closeAll = () => {
     if (inList) {
       html.push("</ul>");
       inList = false;
     }
+    if (inOrderedList) {
+      html.push("</ol>");
+      inOrderedList = false;
+    }
+    if (inQuote) {
+      html.push("</blockquote>");
+      inQuote = false;
+    }
+  };
+  for (const line of lines) {
+    if (line.startsWith("```")) {
+      closeAll();
+      if (!inCode) {
+        html.push("<pre><code>");
+        inCode = true;
+      } else {
+        html.push("</code></pre>");
+        inCode = false;
+      }
+      continue;
+    }
+    if (inCode) {
+      html.push(`${escapeHtml(line)}\n`);
+      continue;
+    }
+    const orderedMatch = line.match(/^(\d+)\.\s+(.*)$/);
+    if (line.startsWith("- ")) {
+      if (!inList) {
+        if (inOrderedList) {
+          html.push("</ol>");
+          inOrderedList = false;
+        }
+        html.push("<ul>");
+        inList = true;
+      }
+      html.push(`<li>${applyInlineMarkdown(line.slice(2))}</li>`);
+      continue;
+    }
+    if (orderedMatch) {
+      if (!inOrderedList) {
+        if (inList) {
+          html.push("</ul>");
+          inList = false;
+        }
+        html.push("<ol>");
+        inOrderedList = true;
+      }
+      html.push(`<li>${applyInlineMarkdown(orderedMatch[2])}</li>`);
+      continue;
+    }
+    if (line.startsWith("> ")) {
+      if (!inQuote) {
+        closeAll();
+        html.push("<blockquote>");
+        inQuote = true;
+      }
+      html.push(`<p>${applyInlineMarkdown(line.slice(2))}</p>`);
+      continue;
+    }
+    closeAll();
     if (line.startsWith("### ")) {
-      html.push(`<h3>${escapeHtml(line.slice(4))}</h3>`);
+      html.push(`<h3>${applyInlineMarkdown(line.slice(4))}</h3>`);
       continue;
     }
     if (line.startsWith("## ")) {
-      html.push(`<h2>${escapeHtml(line.slice(3))}</h2>`);
+      html.push(`<h2>${applyInlineMarkdown(line.slice(3))}</h2>`);
       continue;
     }
     if (line.startsWith("# ")) {
-      html.push(`<h1>${escapeHtml(line.slice(2))}</h1>`);
+      html.push(`<h1>${applyInlineMarkdown(line.slice(2))}</h1>`);
       continue;
     }
     if (!line.trim()) {
       html.push("<br/>");
       continue;
     }
-    html.push(`<p>${escapeHtml(line)}</p>`);
+    html.push(`<p>${applyInlineMarkdown(line)}</p>`);
   }
-  if (inList) html.push("</ul>");
+  closeAll();
+  if (inCode) html.push("</code></pre>");
   return html.join("");
+}
+
+function normalizeHtmlLineBreaks(value) {
+  return String(value || "")
+    .replace(/<div><br><\/div>/gi, "\n")
+    .replace(/<div>/gi, "\n")
+    .replace(/<\/div>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n");
+}
+
+function htmlToMarkdown(html) {
+  let markdown = normalizeHtmlLineBreaks(String(html || ""));
+  markdown = markdown
+    .replace(/<strong>(.*?)<\/strong>/gis, "**$1**")
+    .replace(/<b>(.*?)<\/b>/gis, "**$1**")
+    .replace(/<em>(.*?)<\/em>/gis, "*$1*")
+    .replace(/<i>(.*?)<\/i>/gis, "*$1*")
+    .replace(/<code>(.*?)<\/code>/gis, "`$1`")
+    .replace(/<a [^>]*data-seek-seconds="([^"]+)"[^>]*>(.*?)<\/a>/gis, "[$2](#t=$1)")
+    .replace(/<a [^>]*href="(https?:\/\/[^"]+)"[^>]*>(.*?)<\/a>/gis, "[$2]($1)")
+    .replace(/<h1>(.*?)<\/h1>/gis, "# $1\n")
+    .replace(/<h2>(.*?)<\/h2>/gis, "## $1\n")
+    .replace(/<h3>(.*?)<\/h3>/gis, "### $1\n")
+    .replace(/<blockquote>([\s\S]*?)<\/blockquote>/gi, (_m, content) => content
+      .replace(/<p>(.*?)<\/p>/gis, "> $1\n"))
+    .replace(/<ul>([\s\S]*?)<\/ul>/gi, (_m, content) => content
+      .replace(/<li>(.*?)<\/li>/gis, "- $1\n"))
+    .replace(/<ol>([\s\S]*?)<\/ol>/gi, (_m, content) => {
+      let index = 0;
+      return content.replace(/<li>(.*?)<\/li>/gis, (_item, text) => {
+        index += 1;
+        return `${index}. ${text}\n`;
+      });
+    })
+    .replace(/<pre><code>([\s\S]*?)<\/code><\/pre>/gi, "```\n$1\n```\n")
+    .replace(/<p>(.*?)<\/p>/gis, "$1\n")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/<\/?[^>]+>/g, "");
+  return markdown
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function buildTimestampMarkdown(seconds) {
+  const safeSeconds = Math.max(0, Number(seconds) || 0);
+  const label = formatDuration(safeSeconds * 1000);
+  return `[${label}](#t=${safeSeconds.toFixed(3)})`;
+}
+
+function readJsonStorage(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return fallback;
+    return JSON.parse(raw);
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+function writeJsonStorage(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (_error) {
+    // Ignore storage errors.
+  }
+}
+
+function getLocalNotes() {
+  const notes = readJsonStorage(LOCAL_NOTES_KEY, []);
+  return Array.isArray(notes) ? notes : [];
+}
+
+function saveLocalNotes(notes) {
+  writeJsonStorage(LOCAL_NOTES_KEY, Array.isArray(notes) ? notes : []);
+}
+
+function readRecordSessionNoteDraft() {
+  const draft = readJsonStorage(RECORD_NOTE_DRAFT_KEY, null);
+  return draft && typeof draft === "object"
+    ? {
+        title: String(draft.title || ""),
+        markdown: String(draft.markdown || ""),
+        linkedNoteId: String(draft.linkedNoteId || "")
+      }
+    : { title: "", markdown: "", linkedNoteId: "" };
+}
+
+function saveRecordSessionDraft() {
+  writeJsonStorage(RECORD_NOTE_DRAFT_KEY, recordSessionNoteDraft || { title: "", markdown: "", linkedNoteId: "" });
+}
+
+function createDraftLocalNote({ title, markdown, recordingId = null }) {
+  const now = new Date().toISOString();
+  const entries = getLocalNotes();
+  const note = {
+    id: `local-note-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+    ownerUserId: authUser?.id || "local",
+    recordingId,
+    title: String(title || "").trim() || "Untitled note",
+    markdown: String(markdown || ""),
+    createdAt: now,
+    updatedAt: now,
+    localOnly: true
+  };
+  entries.unshift(note);
+  saveLocalNotes(entries);
+  return note;
+}
+
+function updateDraftLocalNote(id, patch = {}) {
+  const entries = getLocalNotes();
+  const updated = entries.map((note) => note.id === id
+    ? {
+        ...note,
+        ...patch,
+        updatedAt: new Date().toISOString()
+      }
+    : note);
+  saveLocalNotes(updated);
+  return updated.find((note) => note.id === id) || null;
+}
+
+function deleteDraftLocalNote(id) {
+  const entries = getLocalNotes().filter((note) => note.id !== id);
+  saveLocalNotes(entries);
+}
+
+function listLocalNotes(recordingId = undefined) {
+  return getLocalNotes().filter((note) => {
+    if (recordingId === undefined) {
+      return note.recordingId !== "__active__";
+    }
+    return note.recordingId === recordingId;
+  });
+}
+
+function getCurrentRecordingTargetSeconds(recordingId = "") {
+  if (mediaRecorder && recordingId === "__active__") {
+    return getCurrentRecordingElapsedSeconds();
+  }
+  const controller = recordingId ? playbackControllers.get(recordingId) : null;
+  const audio = controller?.audio;
+  if (audio && Number.isFinite(audio.currentTime)) return audio.currentTime;
+  return 0;
+}
+
+function insertTextAtCursor(target, text) {
+  if (!target) return;
+  if (target.tagName === "TEXTAREA") {
+    const start = target.selectionStart || 0;
+    const end = target.selectionEnd || 0;
+    const current = String(target.value || "");
+    target.value = `${current.slice(0, start)}${text}${current.slice(end)}`;
+    target.selectionStart = target.selectionEnd = start + text.length;
+    target.dispatchEvent(new Event("input", { bubbles: true }));
+    return;
+  }
+  document.execCommand("insertText", false, text);
+}
+
+function createNoteEditor(rootEl, options = {}) {
+  if (!rootEl) return null;
+  rootEl.innerHTML = "";
+  const toolbar = document.createElement("div");
+  toolbar.className = "note-editor-toolbar";
+  const surface = document.createElement("div");
+  surface.className = "note-editor-surface markdown-body";
+  surface.contentEditable = "true";
+  const source = document.createElement("textarea");
+  source.className = "note-editor-source";
+  source.hidden = true;
+  const modeBtn = document.createElement("button");
+  modeBtn.type = "button";
+  modeBtn.className = "note-editor-mode";
+  modeBtn.textContent = "Source";
+  let sourceMode = false;
+
+  const getMarkdown = () => (sourceMode ? String(source.value || "") : htmlToMarkdown(surface.innerHTML));
+  const setMarkdown = (markdown) => {
+    const value = String(markdown || "");
+    source.value = value;
+    surface.innerHTML = value ? markdownToHtml(value) : "<p></p>";
+  };
+  const syncToSurface = () => {
+    if (!sourceMode) return;
+    surface.innerHTML = source.value ? markdownToHtml(source.value) : "<p></p>";
+  };
+  const syncToSource = () => {
+    if (sourceMode) return;
+    source.value = htmlToMarkdown(surface.innerHTML);
+  };
+  const toggleMode = () => {
+    sourceMode = !sourceMode;
+    if (sourceMode) {
+      syncToSource();
+      source.hidden = false;
+      surface.hidden = true;
+      modeBtn.textContent = "Preview";
+    } else {
+      syncToSurface();
+      source.hidden = true;
+      surface.hidden = false;
+      modeBtn.textContent = "Source";
+    }
+    options.onChange?.(getMarkdown());
+  };
+
+  const actions = [
+    { label: "B", action: () => document.execCommand("bold") },
+    { label: "I", action: () => document.execCommand("italic") },
+    { label: "H1", action: () => document.execCommand("formatBlock", false, "<h1>") },
+    { label: "H2", action: () => document.execCommand("formatBlock", false, "<h2>") },
+    { label: "•", action: () => document.execCommand("insertUnorderedList") },
+    { label: "1.", action: () => document.execCommand("insertOrderedList") },
+    { label: "Quote", action: () => document.execCommand("formatBlock", false, "<blockquote>") },
+    { label: "Code", action: () => document.execCommand("formatBlock", false, "<pre>") },
+    {
+      label: "Link",
+      action: () => {
+        const value = prompt("Enter URL");
+        if (value) document.execCommand("createLink", false, value);
+      }
+    },
+    {
+      label: "Timestamp",
+      action: () => {
+        const seconds = Number(options.getTimestampSeconds?.() || 0);
+        const stamp = buildTimestampMarkdown(seconds);
+        if (sourceMode) {
+          insertTextAtCursor(source, stamp);
+        } else {
+          document.execCommand("insertHTML", false, markdownToHtml(stamp));
+        }
+        options.onChange?.(getMarkdown());
+      }
+    }
+  ];
+  actions.forEach((entry) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.textContent = entry.label;
+    btn.addEventListener("click", () => {
+      entry.action();
+      options.onChange?.(getMarkdown());
+      if (!sourceMode) {
+        syncToSource();
+      }
+    });
+    toolbar.appendChild(btn);
+  });
+  modeBtn.addEventListener("click", toggleMode);
+  toolbar.appendChild(modeBtn);
+  surface.addEventListener("input", () => {
+    syncToSource();
+    options.onChange?.(getMarkdown());
+  });
+  source.addEventListener("input", () => {
+    options.onChange?.(getMarkdown());
+  });
+  rootEl.appendChild(toolbar);
+  rootEl.appendChild(surface);
+  rootEl.appendChild(source);
+  setMarkdown(options.initialMarkdown || "");
+  return {
+    getMarkdown,
+    setMarkdown,
+    insertMarkdown(text) {
+      const value = String(text || "");
+      if (!value) return;
+      if (sourceMode) {
+        insertTextAtCursor(source, value);
+      } else {
+        document.execCommand("insertHTML", false, markdownToHtml(value));
+        syncToSource();
+        options.onChange?.(getMarkdown());
+      }
+    },
+    focus() {
+      (sourceMode ? source : surface).focus();
+    }
+  };
+}
+
+const standaloneComposerState = {
+  open: false,
+  noteId: "",
+  title: "",
+  markdown: "",
+  localOnly: false
+};
+
+const recordNoteEditor = createNoteEditor(recordNoteEditorEl, {
+  initialMarkdown: recordSessionNoteDraft.markdown,
+  getTimestampSeconds: () => getCurrentRecordingTargetSeconds("__active__"),
+  onChange: (markdown) => {
+    recordSessionNoteDraft.markdown = markdown;
+    saveRecordSessionDraft();
+  }
+});
+
+const standaloneNoteEditor = createNoteEditor(standaloneNoteEditorEl, {
+  initialMarkdown: "",
+  getTimestampSeconds: () => 0,
+  onChange: (markdown) => {
+    standaloneComposerState.markdown = markdown;
+  }
+});
+
+if (recordNoteTitleEl) {
+  recordNoteTitleEl.value = recordSessionNoteDraft.title || "";
+  recordNoteTitleEl.addEventListener("input", () => {
+    recordSessionNoteDraft.title = String(recordNoteTitleEl.value || "");
+    saveRecordSessionDraft();
+  });
+}
+if (standaloneNoteTitleEl) {
+  standaloneNoteTitleEl.addEventListener("input", () => {
+    standaloneComposerState.title = String(standaloneNoteTitleEl.value || "");
+  });
+}
+
+function sortNotesByUpdatedAt(notes) {
+  return [...(Array.isArray(notes) ? notes : [])].sort((left, right) => {
+    const a = new Date(right.updatedAt || right.createdAt || 0).getTime();
+    const b = new Date(left.updatedAt || left.createdAt || 0).getTime();
+    return a - b;
+  });
+}
+
+function normalizeNote(note) {
+  if (!note || typeof note !== "object") return null;
+  return {
+    id: String(note.id || "").trim(),
+    ownerUserId: String(note.ownerUserId || "").trim() || (authUser?.id || "local"),
+    recordingId: note.recordingId ? String(note.recordingId).trim() : null,
+    title: String(note.title || "").trim() || "Untitled note",
+    markdown: String(note.markdown || ""),
+    createdAt: note.createdAt || new Date().toISOString(),
+    updatedAt: note.updatedAt || note.createdAt || new Date().toISOString(),
+    localOnly: Boolean(note.localOnly)
+  };
+}
+
+function cacheRemoteNotes(notes, { replace = false } = {}) {
+  if (replace) notesCache.clear();
+  (Array.isArray(notes) ? notes : []).forEach((note) => {
+    const normalized = normalizeNote(note);
+    if (normalized?.id) {
+      notesCache.set(normalized.id, { ...normalized, localOnly: false });
+    }
+  });
+}
+
+function removeCachedRemoteNote(noteId) {
+  if (!noteId) return;
+  notesCache.delete(noteId);
+}
+
+function listCachedRemoteNotes(recordingId = undefined) {
+  const rows = Array.from(notesCache.values());
+  return rows.filter((note) => {
+    if (recordingId === undefined) return !note.recordingId;
+    return note.recordingId === recordingId;
+  });
+}
+
+function getMergedNotesForRecording(recordingId) {
+  return sortNotesByUpdatedAt([
+    ...listCachedRemoteNotes(recordingId),
+    ...listLocalNotes(recordingId)
+  ]);
+}
+
+function getStandaloneNotes() {
+  return sortNotesByUpdatedAt([
+    ...listCachedRemoteNotes(undefined),
+    ...listLocalNotes(null)
+  ]);
+}
+
+async function loadRemoteNotes() {
+  if (!authUser) {
+    notesCache.clear();
+    renderStandaloneNotes();
+    return [];
+  }
+  const response = await fetch(`${API_BASE}/api/v1/notes?includeStandalone=true`);
+  const payload = await readResponsePayload(response);
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response, payload, "Notes load failed"));
+  }
+  const notes = Array.isArray(payload?.notes) ? payload.notes : [];
+  cacheRemoteNotes(notes, { replace: true });
+  renderStandaloneNotes();
+  return notes;
+}
+
+async function createRemoteNote(payload) {
+  const response = await fetch(`${API_BASE}/api/v1/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  });
+  const data = await readResponsePayload(response);
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response, data, "Note create failed"));
+  }
+  const note = normalizeNote(data?.note);
+  if (note?.id) notesCache.set(note.id, note);
+  return note;
+}
+
+async function updateRemoteNote(noteId, patch) {
+  const response = await fetch(`${API_BASE}/api/v1/notes/${encodeURIComponent(String(noteId || ""))}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch)
+  });
+  const data = await readResponsePayload(response);
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response, data, "Note update failed"));
+  }
+  const note = normalizeNote(data?.note);
+  if (note?.id) notesCache.set(note.id, note);
+  return note;
+}
+
+async function deleteRemoteNote(noteId) {
+  const response = await fetch(`${API_BASE}/api/v1/notes/${encodeURIComponent(String(noteId || ""))}`, {
+    method: "DELETE"
+  });
+  const data = await readResponsePayload(response);
+  if (!response.ok) {
+    throw new Error(getApiErrorMessage(response, data, "Note delete failed"));
+  }
+  removeCachedRemoteNote(noteId);
+}
+
+function renderRecordSessionDraftStatus(message = "") {
+  if (!recordNoteStatusEl) return;
+  if (message) {
+    recordNoteStatusEl.textContent = message;
+    return;
+  }
+  const hasContent = Boolean(String(recordSessionNoteDraft.title || "").trim() || String(recordSessionNoteDraft.markdown || "").trim());
+  recordNoteStatusEl.textContent = hasContent
+    ? "Saved on this device. It will attach to the current recording."
+    : "Session notes stay on this device until the recording is saved.";
+}
+
+function resetRecordSessionDraft() {
+  recordSessionNoteDraft = { title: "", markdown: "", linkedNoteId: "" };
+  saveRecordSessionDraft();
+  if (recordNoteTitleEl) recordNoteTitleEl.value = "";
+  recordNoteEditor?.setMarkdown("");
+  renderRecordSessionDraftStatus();
+}
+
+function adoptActiveSessionNotes(recordingId, fallbackTitle = "") {
+  const markdown = recordSessionNoteDraft.markdown || recordNoteEditor?.getMarkdown?.() || "";
+  const title = String(recordSessionNoteDraft.title || recordNoteTitleEl?.value || fallbackTitle || "").trim() || "Session note";
+  if (!String(markdown).trim() && !title.trim()) {
+    resetRecordSessionDraft();
+    return null;
+  }
+  let note = null;
+  if (recordSessionNoteDraft.linkedNoteId) {
+    note = updateDraftLocalNote(recordSessionNoteDraft.linkedNoteId, {
+      title,
+      markdown,
+      recordingId
+    });
+  } else {
+    note = createDraftLocalNote({ title, markdown, recordingId });
+  }
+  resetRecordSessionDraft();
+  return note;
+}
+
+async function syncLocalNotesToRemoteRecording(localRecordingId, remoteRecordingId) {
+  if (!authUser || !localRecordingId || !remoteRecordingId) return;
+  const notes = listLocalNotes(localRecordingId);
+  for (const note of notes) {
+    await createRemoteNote({
+      recordingId: remoteRecordingId,
+      title: note.title,
+      markdown: note.markdown
+    });
+    deleteDraftLocalNote(note.id);
+  }
+}
+
+function bindNoteTimestampLinks(container, recordingId) {
+  if (!container || !recordingId) return;
+  container.querySelectorAll("a[data-seek-seconds]").forEach((link) => {
+    link.addEventListener("click", async (event) => {
+      event.preventDefault();
+      const seconds = Number(link.dataset.seekSeconds);
+      if (!Number.isFinite(seconds)) return;
+      try {
+        await seekRecordingToTime(recordingId, seconds);
+      } catch (error) {
+        alert(`Jump failed: ${error.message}`);
+      }
+    });
+  });
+}
+
+function createNotePreview(note, recordingId = "") {
+  const preview = document.createElement("div");
+  preview.className = "markdown-body";
+  preview.innerHTML = note.markdown ? markdownToHtml(note.markdown) : "<p><em>No content.</em></p>";
+  if (recordingId) bindNoteTimestampLinks(preview, recordingId);
+  return preview;
+}
+
+function setStandaloneComposerState(next = {}) {
+  Object.assign(standaloneComposerState, next);
+  if (standaloneNoteComposerEl) standaloneNoteComposerEl.hidden = !standaloneComposerState.open;
+  if (standaloneNoteTitleEl) standaloneNoteTitleEl.value = standaloneComposerState.title || "";
+  standaloneNoteEditor?.setMarkdown(standaloneComposerState.markdown || "");
+  if (standaloneNoteStatusEl) {
+    standaloneNoteStatusEl.textContent = authUser
+      ? "Standalone notes sync to your account."
+      : "Standalone notes are cached on this device until you log in.";
+  }
+}
+
+function renderStandaloneNotes() {
+  if (!standaloneNotesListEl) return;
+  const notes = getStandaloneNotes();
+  standaloneNotesListEl.innerHTML = "";
+  if (!notes.length) {
+    standaloneNotesListEl.innerHTML = '<div class="note-list-empty">No standalone notes yet.</div>';
+    return;
+  }
+  notes.forEach((note) => {
+    const item = document.createElement("div");
+    item.className = "recording-item";
+    const title = document.createElement("strong");
+    title.textContent = note.title;
+    const meta = document.createElement("div");
+    meta.className = "recording-meta";
+    meta.textContent = `${note.localOnly ? "Saved on device" : "Synced"} • Updated ${formatTimestamp(note.updatedAt)}`;
+    const preview = createNotePreview(note);
+    const actions = document.createElement("div");
+    actions.className = "recording-actions";
+
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.textContent = "Edit";
+    editBtn.addEventListener("click", () => {
+      setStandaloneComposerState({
+        open: true,
+        noteId: note.id,
+        title: note.title,
+        markdown: note.markdown,
+        localOnly: Boolean(note.localOnly)
+      });
+      standaloneNoteEditor?.focus();
+    });
+
+    const downloadBtn = document.createElement("button");
+    downloadBtn.type = "button";
+    downloadBtn.textContent = ".md";
+    downloadBtn.addEventListener("click", () => {
+      downloadTextFile(`${sanitizeFilename(note.title)}.md`, note.markdown || "", "text/markdown;charset=utf-8");
+    });
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", async () => {
+      try {
+        if (note.localOnly) {
+          deleteDraftLocalNote(note.id);
+        } else {
+          await deleteRemoteNote(note.id);
+        }
+        renderStandaloneNotes();
+        await loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
+      } catch (error) {
+        alert(`Delete failed: ${error.message}`);
+      }
+    });
+
+    actions.appendChild(editBtn);
+    actions.appendChild(downloadBtn);
+    actions.appendChild(deleteBtn);
+    item.appendChild(title);
+    item.appendChild(meta);
+    item.appendChild(preview);
+    item.appendChild(actions);
+    standaloneNotesListEl.appendChild(item);
+  });
+}
+
+function buildRecordingNotesSection(recording, sourceKind = "cloud") {
+  const uiState = getRecordingUiState(recording.id);
+  const section = document.createElement("div");
+  section.className = "recording-summary";
+  const header = document.createElement("div");
+  header.className = "recording-section-header";
+  const toggle = document.createElement("button");
+  toggle.type = "button";
+  toggle.className = "toggle-button prominent-toggle section-main-btn";
+  const expanded = Boolean(uiState.showNotes);
+  toggle.textContent = `${expanded ? "\u25BE" : "\u25B8"} Notes`;
+  const newBtn = document.createElement("button");
+  newBtn.type = "button";
+  newBtn.textContent = "New Note";
+  newBtn.className = "section-refresh-btn";
+  const body = document.createElement("div");
+  body.hidden = !expanded;
+  body.className = "recording-notes";
+  const notes = getMergedNotesForRecording(recording.id);
+
+  newBtn.addEventListener("click", () => {
+    updateRecordingUiState(recording.id, {
+      showNotes: true,
+      noteDraft: {
+        noteId: "",
+        title: `${recording.title} note`,
+        markdown: ""
+      }
+    });
+    loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
+  });
+
+  toggle.addEventListener("click", () => {
+    const nextExpanded = body.hidden;
+    updateRecordingUiState(recording.id, { showNotes: nextExpanded });
+    loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
+  });
+
+  const noteDraft = uiState.noteDraft;
+  if (noteDraft) {
+    const editorWrap = document.createElement("div");
+    editorWrap.className = "note-composer";
+    const titleInput = document.createElement("input");
+    titleInput.value = noteDraft.title || "";
+    titleInput.placeholder = "Note title";
+    const editorShell = document.createElement("div");
+    editorShell.className = "note-editor-shell";
+    const status = document.createElement("div");
+    status.className = "hint";
+    status.textContent = sourceKind === "cloud" && authUser
+      ? "This note will sync with the recording."
+      : "This note is saved on this device.";
+    const toolbar = document.createElement("div");
+    toolbar.className = "button-row";
+    const stampBtn = document.createElement("button");
+    stampBtn.type = "button";
+    stampBtn.textContent = "Add Timestamp";
+    const saveBtn = document.createElement("button");
+    saveBtn.type = "button";
+    saveBtn.textContent = "Save Note";
+    const cancelBtn = document.createElement("button");
+    cancelBtn.type = "button";
+    cancelBtn.textContent = "Close";
+    const editor = createNoteEditor(editorShell, {
+      initialMarkdown: noteDraft.markdown || "",
+      getTimestampSeconds: () => getCurrentRecordingTargetSeconds(recording.id),
+      onChange: (markdown) => {
+        const current = getRecordingUiState(recording.id);
+        updateRecordingUiState(recording.id, {
+          noteDraft: {
+            ...(current.noteDraft || {}),
+            title: titleInput.value,
+            markdown
+          }
+        });
+      }
+    });
+    titleInput.addEventListener("input", () => {
+      const current = getRecordingUiState(recording.id);
+      updateRecordingUiState(recording.id, {
+        noteDraft: {
+          ...(current.noteDraft || {}),
+          title: titleInput.value,
+          markdown: editor.getMarkdown()
+        }
+      });
+    });
+    stampBtn.addEventListener("click", () => {
+      editor.insertMarkdown(`${buildTimestampMarkdown(getCurrentRecordingTargetSeconds(recording.id))} `);
+    });
+    saveBtn.addEventListener("click", async () => {
+      const title = String(titleInput.value || "").trim() || "Untitled note";
+      const markdown = editor.getMarkdown();
+      try {
+        if (noteDraft.noteId) {
+          if (noteDraft.localOnly) {
+            updateDraftLocalNote(noteDraft.noteId, { title, markdown, recordingId: recording.id });
+          } else {
+            await updateRemoteNote(noteDraft.noteId, { title, markdown, recordingId: recording.id });
+          }
+        } else if (sourceKind === "cloud" && authUser) {
+          await createRemoteNote({ recordingId: recording.id, title, markdown });
+        } else {
+          createDraftLocalNote({ recordingId: recording.id, title, markdown });
+        }
+        updateRecordingUiState(recording.id, { noteDraft: null, showNotes: true });
+        renderStandaloneNotes();
+        await loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
+      } catch (error) {
+        alert(`Save note failed: ${error.message}`);
+      }
+    });
+    cancelBtn.addEventListener("click", () => {
+      updateRecordingUiState(recording.id, { noteDraft: null });
+      loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
+    });
+    toolbar.appendChild(stampBtn);
+    toolbar.appendChild(saveBtn);
+    toolbar.appendChild(cancelBtn);
+    editorWrap.appendChild(titleInput);
+    editorWrap.appendChild(editorShell);
+    editorWrap.appendChild(toolbar);
+    editorWrap.appendChild(status);
+    body.appendChild(editorWrap);
+  }
+
+  if (!notes.length && !noteDraft) {
+    const empty = document.createElement("div");
+    empty.className = "note-list-empty";
+    empty.textContent = "No notes linked to this recording yet.";
+    body.appendChild(empty);
+  }
+
+  notes.forEach((note) => {
+    const item = document.createElement("div");
+    item.className = "recording-item";
+    const title = document.createElement("strong");
+    title.textContent = note.title;
+    const meta = document.createElement("div");
+    meta.className = "recording-meta";
+    meta.textContent = `${note.localOnly ? "Saved on device" : "Synced"} • Updated ${formatTimestamp(note.updatedAt)}`;
+    const preview = createNotePreview(note, recording.id);
+    const actions = document.createElement("div");
+    actions.className = "recording-actions";
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.textContent = "Edit";
+    editBtn.addEventListener("click", () => {
+      updateRecordingUiState(recording.id, {
+        showNotes: true,
+        noteDraft: {
+          noteId: note.id,
+          title: note.title,
+          markdown: note.markdown,
+          localOnly: Boolean(note.localOnly)
+        }
+      });
+      loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
+    });
+    const downloadBtn = document.createElement("button");
+    downloadBtn.type = "button";
+    downloadBtn.textContent = ".md";
+    downloadBtn.addEventListener("click", () => {
+      downloadTextFile(`${sanitizeFilename(note.title)}.md`, note.markdown || "", "text/markdown;charset=utf-8");
+    });
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.textContent = "Delete";
+    deleteBtn.addEventListener("click", async () => {
+      try {
+        if (note.localOnly) {
+          deleteDraftLocalNote(note.id);
+        } else {
+          await deleteRemoteNote(note.id);
+        }
+        renderStandaloneNotes();
+        await loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
+      } catch (error) {
+        alert(`Delete failed: ${error.message}`);
+      }
+    });
+    actions.appendChild(editBtn);
+    actions.appendChild(downloadBtn);
+    actions.appendChild(deleteBtn);
+    item.appendChild(title);
+    item.appendChild(meta);
+    item.appendChild(preview);
+    item.appendChild(actions);
+    body.appendChild(item);
+  });
+
+  header.appendChild(toggle);
+  header.appendChild(newBtn);
+  section.appendChild(header);
+  section.appendChild(body);
+  return section;
 }
 
 function downloadTextFile(fileName, text, mimeType = "text/plain;charset=utf-8") {
@@ -1995,12 +2877,16 @@ async function loadRecordings(options = {}) {
           `Delete local recording "${recording.title}"?\n\nWarning: This removes the local audio copy and cannot be undone.`
         );
         if (!proceed) return;
+        listLocalNotes(recording.id).forEach((note) => {
+          deleteDraftLocalNote(note.id);
+        });
         if (recording.downloadUrl) {
           URL.revokeObjectURL(recording.downloadUrl);
         }
         releasePlayback(recording.id);
         playbackLoaders.delete(recording.id);
         localRecordings.delete(recording.id);
+        renderStandaloneNotes();
         loadRecordings();
       });
       actions.appendChild(deleteLocalBtn);
@@ -2015,6 +2901,7 @@ async function loadRecordings(options = {}) {
         item.appendChild(createPlaybackSection(recording.id, localLoader));
         preloadPlaybackForRecording(recording.id);
       }
+      item.appendChild(buildRecordingNotesSection(recording, "local"));
       if (recording.uploadStatus === "uploading") {
         item.appendChild(buildLoadingBar("Uploading..."));
       }
@@ -2184,7 +3071,7 @@ async function loadRecordings(options = {}) {
       const transcriptWords = document.createElement("div");
       transcriptWords.className = "timed-words";
       transcriptWords.hidden = true;
-      const timedWords = buildTimedWords(recording);
+      const timedWords = buildCanonicalTimedWords(recording);
       const sentenceAnchors = buildSentenceAnchors(recording);
       const sentenceTimeline = buildSentenceWordTimeline(sentenceAnchors);
       const transcriptWordTotal = String(recording.metadata?.transcript?.text || "")
@@ -2258,8 +3145,8 @@ async function loadRecordings(options = {}) {
             ? matched.end
             : NaN;
           const seekEnd = Number.isFinite(matchedEnd)
-            ? Math.min(matchedEnd, seekStart + 0.32)
-            : (Number.isFinite(seekStart) ? (seekStart + 0.22) : NaN);
+            ? matchedEnd
+            : (Number.isFinite(seekStart) ? (seekStart + 0.18) : NaN);
           fallbackWordIndex += 1;
           if (Number.isFinite(seekStart)) {
             btn.title = `${formatDuration(seekStart * 1000)}`;
@@ -2355,28 +3242,6 @@ async function loadRecordings(options = {}) {
           btn.className = "timed-word";
           btn.textContent = token;
           const cleanToken = cleanWordToken(token);
-          let timedMatched = null;
-          // Prefer same-token nearby match first.
-          for (let i = segmentTimedIndex; i < Math.min(timedWords.length, segmentTimedIndex + 12); i += 1) {
-            const candidate = timedWords[i];
-            if (cleanWordToken(candidate.word) === cleanToken && Number.isFinite(candidate.start)) {
-              timedMatched = candidate;
-              segmentTimedIndex = i + 1;
-              break;
-            }
-          }
-          // If no token match, use next timed word in sequence to preserve pause gaps.
-          if (!timedMatched) {
-            for (let i = segmentTimedIndex; i < timedWords.length; i += 1) {
-              const candidate = timedWords[i];
-              if (isPauseMarker(candidate.word)) continue;
-              if (Number.isFinite(candidate.start)) {
-                timedMatched = candidate;
-                segmentTimedIndex = i + 1;
-                break;
-              }
-            }
-          }
           let matched = null;
           for (let i = segmentTimelineIndex; i < sentenceTimeline.length; i += 1) {
             const candidate = sentenceTimeline[i];
@@ -2392,6 +3257,31 @@ async function loadRecordings(options = {}) {
           const proportionalEnd = Number.isFinite(segStart) && Number.isFinite(segEnd) && segWordCount > 0
             ? (segStart + ((segEnd - segStart) * ((segWordIndex + 1) / segWordCount)))
             : NaN;
+          const timedMatch = findBestTimedWordMatch({
+            cleanToken,
+            expectedStart: proportionalStart,
+            windowStart: segStart,
+            windowEnd: segEnd,
+            timedWords,
+            startIndex: segmentTimedIndex,
+            lookahead: 48,
+            speakerId: seg.speakerId || null
+          });
+          let timedMatched = timedMatch.match;
+          segmentTimedIndex = timedMatch.nextIndex;
+          if (!timedMatched && seg.speakerId) {
+            const fallbackTimedMatch = findBestTimedWordMatch({
+              cleanToken,
+              expectedStart: proportionalStart,
+              windowStart: segStart,
+              windowEnd: segEnd,
+              timedWords,
+              startIndex: segmentTimedIndex,
+              lookahead: 48
+            });
+            timedMatched = fallbackTimedMatch.match;
+            segmentTimedIndex = fallbackTimedMatch.nextIndex;
+          }
           const seekStart = timedMatched && Number.isFinite(timedMatched.start)
             ? timedMatched.start
             : (matched && Number.isFinite(matched.start)
@@ -2402,7 +3292,7 @@ async function loadRecordings(options = {}) {
                 ? timedMatched.end
                 : (matched && Number.isFinite(matched.end)
                 ? matched.end
-                : (Number.isFinite(proportionalEnd) ? proportionalEnd : (seekStart + 0.22))))
+                : (Number.isFinite(proportionalEnd) ? proportionalEnd : (seekStart + 0.18))))
             : NaN;
           segWordIndex += 1;
           if (Number.isFinite(seekStart)) {
@@ -2685,6 +3575,7 @@ async function loadRecordings(options = {}) {
         item.appendChild(buildLoadingBar(uiState.activeTaskLabel || "Queued for processing", detail));
       }
       item.appendChild(transcriptSection);
+      item.appendChild(buildRecordingNotesSection(recording, "cloud"));
       item.appendChild(summarySection);
       listTarget.appendChild(item);
     });
@@ -2934,6 +3825,7 @@ function registerTranscriptWord(recordingId, element, start, end) {
     start,
     end: Number.isFinite(end) ? end : start + 0.35
   });
+  list.sort((left, right) => left.start - right.start);
   transcriptWordRegistry.set(recordingId, list);
 }
 
@@ -2955,6 +3847,22 @@ function syncActiveTranscriptWord(recordingId, currentSeconds) {
       break;
     }
   }
+  if (activeIndex < 0) {
+    for (let i = 0; i < entries.length; i += 1) {
+      const next = entries[i];
+      if (currentSeconds < next.start) {
+        const previous = entries[i - 1] || null;
+        const previousGap = previous ? (currentSeconds - previous.end) : Infinity;
+        const nextGap = next.start - currentSeconds;
+        if (previous && previousGap >= 0 && previousGap <= 0.18) {
+          activeIndex = i - 1;
+        } else if (nextGap >= 0 && nextGap <= 0.08) {
+          activeIndex = i;
+        }
+        break;
+      }
+    }
+  }
   entries.forEach((entry, index) => {
     entry.element.classList.toggle("is-active", index === activeIndex);
   });
@@ -2962,20 +3870,31 @@ function syncActiveTranscriptWord(recordingId, currentSeconds) {
 
 function buildTimedWords(recording) {
   const transcript = recording.metadata?.transcript || {};
-  const captionTimedWords = buildTimedWordsFromCaptionAnchors(recording);
-  if (captionTimedWords.length) {
-    return captionTimedWords;
+  if (Array.isArray(transcript.timedWords) && transcript.timedWords.length) {
+    return transcript.timedWords
+      .map((entry) => ({
+        word: String(entry.word || "").trim(),
+        start: Number(entry.start),
+        end: Number(entry.end),
+        speakerId: String(entry.speakerId || "").trim() || null
+      }))
+      .filter((entry) => entry.word && Number.isFinite(entry.start));
   }
-  const durationHint = Number(getRecordingDurationHint(recording));
   if (Array.isArray(transcript.wordTimings) && transcript.wordTimings.length) {
     return transcript.wordTimings
       .map((entry) => ({
         word: String(entry.word || "").trim(),
         start: Number(entry.start),
-        end: Number(entry.end)
+        end: Number(entry.end),
+        speakerId: null
       }))
       .filter((entry) => entry.word && Number.isFinite(entry.start));
   }
+  const captionTimedWords = buildTimedWordsFromCaptionAnchors(recording);
+  if (captionTimedWords.length) {
+    return captionTimedWords;
+  }
+  const durationHint = Number(getRecordingDurationHint(recording));
 
   const segments = Array.isArray(transcript.providerSegments) ? transcript.providerSegments : [];
   const inferred = [];
@@ -2994,11 +3913,63 @@ function buildTimedWords(recording) {
       inferred.push({
         word,
         start: mapped?.start ?? (start + (duration * ratio)),
-        end: mapped?.end ?? (start + (duration * ((index + 1) / words.length)))
+        end: mapped?.end ?? (start + (duration * ((index + 1) / words.length))),
+        speakerId: String(segment?.speakerId || "").trim() || null
       });
     });
   });
   return inferred;
+}
+
+function buildCanonicalTimedWords(recording) {
+  const raw = buildTimedWords(recording)
+    .map((entry) => ({
+      ...entry,
+      start: Number(entry.start),
+      end: Number(entry.end)
+    }))
+    .filter((entry) => Number.isFinite(entry.start))
+    .sort((left, right) => left.start - right.start);
+  const spacings = [];
+  raw.forEach((entry, index) => {
+    const nextStart = Number(raw[index + 1]?.start);
+    if (Number.isFinite(nextStart) && nextStart > entry.start && !isPauseMarker(entry.word)) {
+      spacings.push(nextStart - entry.start);
+    }
+  });
+  const sortedSpacings = spacings.sort((left, right) => left - right);
+  const medianSpacing = sortedSpacings.length
+    ? sortedSpacings[Math.floor(sortedSpacings.length / 2)]
+    : 0.34;
+  const timedWords = raw
+    .map((entry, index, list) => {
+      const start = Number(entry.start);
+      if (!Number.isFinite(start)) return null;
+      const rawEnd = Number(entry.end);
+      const nextStart = Number(list[index + 1]?.start);
+      const spacing = Number.isFinite(nextStart) && nextStart > start
+        ? nextStart - start
+        : medianSpacing;
+      const minActive = Math.min(
+        Number.isFinite(nextStart) && nextStart > start ? Math.max(0.06, nextStart - start - 0.015) : 0.42,
+        Math.max(0.16, Math.min(0.42, spacing * 0.75))
+      );
+      let end = Number.isFinite(rawEnd) && rawEnd > start ? rawEnd : (start + minActive);
+      end = Math.max(end, start + minActive);
+      if (Number.isFinite(nextStart) && nextStart > start) {
+        end = Math.min(end, Math.max(start + 0.03, nextStart - 0.015));
+      }
+      return {
+        word: String(entry.word || "").trim(),
+        cleanWord: cleanWordToken(entry.word),
+        start,
+        end,
+        speakerId: String(entry.speakerId || "").trim() || null
+      };
+    })
+    .filter(Boolean)
+    .sort((left, right) => left.start - right.start);
+  return timedWords;
 }
 
 function buildSentenceAnchors(recording) {
@@ -3086,7 +4057,16 @@ function getSpeechEndHint(sentenceAnchors, fallbackDurationSeconds = 0) {
   return Number.isFinite(fallbackDurationSeconds) ? Math.max(0, fallbackDurationSeconds) : 0;
 }
 
-function findBestTimedWordMatch({ cleanToken, expectedStart, windowStart, windowEnd, timedWords, startIndex = 0, lookahead = 48 }) {
+function findBestTimedWordMatch({
+  cleanToken,
+  expectedStart,
+  windowStart,
+  windowEnd,
+  timedWords,
+  startIndex = 0,
+  lookahead = 48,
+  speakerId = null
+}) {
   if (!cleanToken || !Array.isArray(timedWords) || !timedWords.length) {
     return { match: null, nextIndex: startIndex };
   }
@@ -3099,6 +4079,7 @@ function findBestTimedWordMatch({ cleanToken, expectedStart, windowStart, window
     if (cleanWordToken(candidate.word) !== cleanToken) continue;
     const start = Number(candidate.start);
     if (!Number.isFinite(start)) continue;
+    if (speakerId && candidate.speakerId && candidate.speakerId !== speakerId) continue;
     if (Number.isFinite(windowStart) && start < windowStart - 0.8) continue;
     if (Number.isFinite(windowEnd) && start > windowEnd + 0.8) continue;
     const expectedDelta = Number.isFinite(expectedStart) ? Math.abs(start - expectedStart) : 0;
@@ -3911,6 +4892,7 @@ async function startRecording() {
         durationSeconds: elapsedDurationSeconds,
         captionAnchors: [...liveCaptionAnchors]
       });
+      adoptActiveSessionNotes(localEntry.id, `${title} note`);
 
       setRecordingUiState({
         message: "Recording ready.",
@@ -4175,6 +5157,7 @@ async function uploadRecording(blob, title, localId, fallbackDurationSeconds = 0
     }
     uploadStatusEl.textContent = `Uploaded: ${recording.id}`;
     if (localId) {
+      await syncLocalNotesToRemoteRecording(localId, recording.id);
       const previous = localRecordings.get(localId);
       if (previous?.downloadUrl) {
         URL.revokeObjectURL(previous.downloadUrl);
@@ -4462,6 +5445,7 @@ async function loginWithEmailPassword() {
     }
     setAuthState(payload.token, payload.user || null);
     authPasswordEl.value = "";
+    await loadRemoteNotes();
     await loadRecordings({ refreshCloud: true, appendCloud: false });
     await loadBackups();
     if (isAdminSession()) {
@@ -4483,6 +5467,7 @@ async function logoutCurrentSession() {
     // Ignore logout errors.
   } finally {
     setAuthState("", null);
+    renderStandaloneNotes();
     await loadRecordings({ refreshCloud: true, appendCloud: false });
     await loadBackups();
   }
@@ -4973,6 +5958,92 @@ if (deadAirThresholdInputEl) {
 if (manualUploadBtn) {
   manualUploadBtn.addEventListener("click", uploadManualFile);
 }
+if (recordNoteTimestampBtn) {
+  recordNoteTimestampBtn.addEventListener("click", () => {
+    recordNoteEditor?.insertMarkdown(`${buildTimestampMarkdown(getCurrentRecordingTargetSeconds("__active__"))} `);
+    recordNoteEditor?.focus();
+  });
+}
+if (saveRecordNoteBtn) {
+  saveRecordNoteBtn.addEventListener("click", () => {
+    const markdown = recordNoteEditor?.getMarkdown?.() || "";
+    const title = String(recordNoteTitleEl?.value || "").trim() || "Session note";
+    if (!String(markdown).trim() && !title.trim()) {
+      renderRecordSessionDraftStatus("Enter note content before saving.");
+      return;
+    }
+    let saved = null;
+    if (recordSessionNoteDraft.linkedNoteId) {
+      saved = updateDraftLocalNote(recordSessionNoteDraft.linkedNoteId, {
+        title,
+        markdown,
+        recordingId: "__active__"
+      });
+    } else {
+      saved = createDraftLocalNote({
+        title,
+        markdown,
+        recordingId: "__active__"
+      });
+    }
+    recordSessionNoteDraft = {
+      title,
+      markdown,
+      linkedNoteId: saved?.id || recordSessionNoteDraft.linkedNoteId || ""
+    };
+    saveRecordSessionDraft();
+    renderRecordSessionDraftStatus("Session note saved on this device.");
+  });
+}
+if (clearRecordNoteBtn) {
+  clearRecordNoteBtn.addEventListener("click", () => {
+    if (recordSessionNoteDraft.linkedNoteId) {
+      deleteDraftLocalNote(recordSessionNoteDraft.linkedNoteId);
+    }
+    resetRecordSessionDraft();
+  });
+}
+if (createStandaloneNoteBtn) {
+  createStandaloneNoteBtn.addEventListener("click", () => {
+    setStandaloneComposerState({
+      open: true,
+      noteId: "",
+      title: "",
+      markdown: "",
+      localOnly: !authUser
+    });
+    standaloneNoteEditor?.focus();
+  });
+}
+if (saveStandaloneNoteBtn) {
+  saveStandaloneNoteBtn.addEventListener("click", async () => {
+    const title = String(standaloneNoteTitleEl?.value || "").trim() || "Untitled note";
+    const markdown = standaloneNoteEditor?.getMarkdown?.() || "";
+    try {
+      if (standaloneComposerState.noteId) {
+        if (standaloneComposerState.localOnly) {
+          updateDraftLocalNote(standaloneComposerState.noteId, { title, markdown, recordingId: null });
+        } else {
+          await updateRemoteNote(standaloneComposerState.noteId, { title, markdown, recordingId: null });
+        }
+      } else if (authUser) {
+        await createRemoteNote({ title, markdown, recordingId: null });
+      } else {
+        createDraftLocalNote({ title, markdown, recordingId: null });
+      }
+      setStandaloneComposerState({ open: false, noteId: "", title: "", markdown: "", localOnly: !authUser });
+      renderStandaloneNotes();
+      await loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
+    } catch (error) {
+      if (standaloneNoteStatusEl) standaloneNoteStatusEl.textContent = `Save failed: ${error.message}`;
+    }
+  });
+}
+if (cancelStandaloneNoteBtn) {
+  cancelStandaloneNoteBtn.addEventListener("click", () => {
+    setStandaloneComposerState({ open: false, noteId: "", title: "", markdown: "", localOnly: !authUser });
+  });
+}
 if (authLoginBtn) {
   authLoginBtn.addEventListener("click", loginWithEmailPassword);
 }
@@ -5016,9 +6087,18 @@ renderDeadAirSettings();
 applyAdminVisibility();
 applySettingsVisibility();
 applyDefaultRecordingTitle(true);
+renderRecordSessionDraftStatus();
+renderStandaloneNotes();
 (async () => {
   await ensureReachableApiBase();
   await refreshAuthMe(true);
+  if (authUser) {
+    try {
+      await loadRemoteNotes();
+    } catch (_error) {
+      renderStandaloneNotes();
+    }
+  }
   await checkHealth();
   await loadVersion();
   await loadBranding();
