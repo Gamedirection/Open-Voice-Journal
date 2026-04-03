@@ -2,6 +2,14 @@
 
 All notable changes to Open-Voice-Journal will be documented in this file.
 
+## v0.3.8 - 2026-04-03
+
+- Hid notes that do not contain any actual content so empty note cards no longer appear in recording and notes views.
+- Darkened the app's green accent styling for a heavier, more grounded visual theme.
+- Simplified logged-in account settings to show profile summary and logout controls instead of the email/password/login form.
+- Reworked Settings into an Android-style drill-down menu with dedicated pages for account, general, automation, admin, and API docs sections to reduce clutter.
+- Bumped mobile/app release metadata to mobile package `0.3.8` and Android app `1.0.9` (`versionCode 10`).
+
 ## v0.3.7 - 2026-04-03
 
 - Fixed Android microphone permission flow by adding the missing audio settings permission required by the Capacitor WebView bridge.

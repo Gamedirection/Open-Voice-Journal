@@ -176,6 +176,9 @@ const authChangePasswordBtn = document.getElementById("authChangePassword");
 const authResetEmailEl = document.getElementById("authResetEmail");
 const authForgotPasswordBtn = document.getElementById("authForgotPassword");
 const authStatusEl = document.getElementById("authStatus");
+const authProfileSummaryEl = document.getElementById("authProfileSummary");
+const authProfileNameEl = document.getElementById("authProfileName");
+const authProfileMetaEl = document.getElementById("authProfileMeta");
 const adminUsersCardEl = document.getElementById("adminUsersCard");
 const apiConnectionsCardEl = document.getElementById("apiConnectionsCard");
 const serverBackupCardEl = document.getElementById("serverBackupCard");
@@ -196,6 +199,11 @@ const openApiKeyListEl = document.getElementById("openApiKeyList");
 const generalSettingsCardEl = document.getElementById("generalSettingsCard");
 const automationCardEl = document.getElementById("automationCard");
 const docsCardEl = document.getElementById("docsCard");
+const settingsHomePageEl = document.getElementById("settingsHomePage");
+const settingsAdminEntryEl = document.getElementById("settingsAdminEntry");
+const settingsPageEls = Array.from(document.querySelectorAll("[data-settings-page]"));
+const settingsNavButtons = Array.from(document.querySelectorAll("[data-settings-target]"));
+const settingsBackButtons = Array.from(document.querySelectorAll("[data-settings-back]"));
 
 const DEFAULT_SUMMARY_PROVIDER = "ollama_local";
 const DEFAULT_SUMMARY_MODEL = "qwen2.5:7b-instruct";
@@ -237,6 +245,7 @@ let cloudHasMore = true;
 let cloudLoading = false;
 let cloudQuery = "";
 let recordingsScrollTicking = false;
+let currentSettingsPage = "home";
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
 let authUser = null;
 let lastHealthSummary = "Not checked yet.";
@@ -509,6 +518,7 @@ function setAuthState(token, user) {
   applySettingsVisibility();
   renderUploadModeStatus();
   renderStandaloneNotes();
+  renderSettingsProfile();
 }
 
 function setServerConnectionState(state, label, detail) {
@@ -532,16 +542,57 @@ function applyAdminVisibility() {
   if (adminUsersCardEl) adminUsersCardEl.hidden = !show;
   if (apiConnectionsCardEl) apiConnectionsCardEl.hidden = !show;
   if (serverBackupCardEl) serverBackupCardEl.hidden = !show;
+  if (settingsAdminEntryEl) settingsAdminEntryEl.hidden = !show;
 }
 
 function applySettingsVisibility() {
   const loggedIn = Boolean(authUser);
+  if (authEmailEl) authEmailEl.hidden = loggedIn;
+  if (authPasswordEl) authPasswordEl.hidden = loggedIn;
   if (authLoginRowEl) authLoginRowEl.hidden = loggedIn;
   if (authLogoutRowEl) authLogoutRowEl.hidden = !loggedIn;
-  if (authChangePasswordGroupEl) authChangePasswordGroupEl.hidden = !loggedIn;
-  if (generalSettingsCardEl) generalSettingsCardEl.hidden = false;
-  if (automationCardEl) automationCardEl.hidden = false;
-  if (docsCardEl) docsCardEl.hidden = false;
+  if (authRegisterNameEl) authRegisterNameEl.hidden = loggedIn;
+  if (authRegisterEmailEl) authRegisterEmailEl.hidden = loggedIn;
+  if (authRegisterPasswordEl) authRegisterPasswordEl.hidden = loggedIn;
+  if (authRegisterBtn) authRegisterBtn.hidden = loggedIn;
+  if (authChangePasswordGroupEl) authChangePasswordGroupEl.hidden = true;
+  if (authResetEmailEl) authResetEmailEl.hidden = loggedIn;
+  if (authForgotPasswordBtn) authForgotPasswordBtn.hidden = loggedIn;
+  if (authProfileSummaryEl) authProfileSummaryEl.hidden = !loggedIn;
+  renderSettingsProfile();
+  renderSettingsPage();
+}
+
+function renderSettingsProfile() {
+  if (!authProfileSummaryEl || !authProfileNameEl || !authProfileMetaEl) return;
+  if (!authUser) {
+    authProfileSummaryEl.hidden = true;
+    authProfileNameEl.textContent = "Signed out";
+    authProfileMetaEl.textContent = "No active session";
+    return;
+  }
+  const displayName = String(authUser.displayName || "").trim() || String(authUser.email || "").trim() || "Signed in";
+  authProfileSummaryEl.hidden = false;
+  authProfileNameEl.textContent = displayName;
+  authProfileMetaEl.textContent = `${authUser.email || "Unknown email"} • ${authUser.role || "user"}`;
+}
+
+function renderSettingsPage() {
+  const activePage = currentSettingsPage || "home";
+  if (settingsHomePageEl) settingsHomePageEl.hidden = activePage !== "home";
+  settingsPageEls.forEach((element) => {
+    element.hidden = element.dataset.settingsPage !== activePage;
+  });
+}
+
+function setSettingsPage(pageName = "home") {
+  const normalized = String(pageName || "home");
+  if (normalized === "admin" && !isAdminSession()) {
+    currentSettingsPage = "home";
+  } else {
+    currentSettingsPage = normalized;
+  }
+  renderSettingsPage();
 }
 
 function formatBytes(value) {
@@ -1299,10 +1350,15 @@ function bindNoteTimestampLinks(container, recordingId) {
   });
 }
 
+function noteHasVisibleContent(note) {
+  return Boolean(String(note?.markdown || "").trim());
+}
+
 function createNotePreview(note, recordingId = "") {
+  if (!noteHasVisibleContent(note)) return null;
   const preview = document.createElement("div");
   preview.className = "markdown-body";
-  preview.innerHTML = note.markdown ? markdownToHtml(note.markdown) : "<p><em>No content.</em></p>";
+  preview.innerHTML = markdownToHtml(note.markdown);
   if (recordingId) bindNoteTimestampLinks(preview, recordingId);
   return preview;
 }
@@ -1321,7 +1377,7 @@ function setStandaloneComposerState(next = {}) {
 
 function renderStandaloneNotes() {
   if (!standaloneNotesListEl) return;
-  const notes = getStandaloneNotes();
+  const notes = getStandaloneNotes().filter(noteHasVisibleContent);
   standaloneNotesListEl.innerHTML = "";
   if (!notes.length) {
     standaloneNotesListEl.innerHTML = '<div class="note-list-empty">No standalone notes yet.</div>';
@@ -1382,7 +1438,7 @@ function renderStandaloneNotes() {
     actions.appendChild(deleteBtn);
     item.appendChild(title);
     item.appendChild(meta);
-    item.appendChild(preview);
+    if (preview) item.appendChild(preview);
     item.appendChild(actions);
     standaloneNotesListEl.appendChild(item);
   });
@@ -1390,7 +1446,7 @@ function renderStandaloneNotes() {
 
 function buildRecordingNotesSection(recording, sourceKind = "cloud") {
   const uiState = getRecordingUiState(recording.id);
-  const notes = getMergedNotesForRecording(recording.id);
+  const notes = getMergedNotesForRecording(recording.id).filter(noteHasVisibleContent);
   const noteDraft = uiState.noteDraft;
   if (!notes.length && !noteDraft && !uiState.showNotes) {
     return null;
@@ -1577,7 +1633,7 @@ function buildRecordingNotesSection(recording, sourceKind = "cloud") {
     actions.appendChild(deleteBtn);
     item.appendChild(title);
     item.appendChild(meta);
-    item.appendChild(preview);
+    if (preview) item.appendChild(preview);
     item.appendChild(actions);
     body.appendChild(item);
   });
@@ -6181,6 +6237,18 @@ if (createOpenApiKeyBtn) {
   createOpenApiKeyBtn.addEventListener("click", createOpenApiKeyEntry);
 }
 
+settingsNavButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    setSettingsPage(btn.dataset.settingsTarget || "home");
+  });
+});
+
+settingsBackButtons.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    setSettingsPage("home");
+  });
+});
+
 tabButtons.forEach((btn) => {
   btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
 });
@@ -6194,6 +6262,7 @@ renderTimeZoneSettings();
 renderDeadAirSettings();
 applyAdminVisibility();
 applySettingsVisibility();
+setSettingsPage("home");
 applyDefaultRecordingTitle(true);
 renderRecordSessionDraftStatus();
 renderStandaloneNotes();

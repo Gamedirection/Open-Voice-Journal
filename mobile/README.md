@@ -4,15 +4,13 @@ This folder wraps the `../frontend` web app into an Android app.
 
 ## Current Mobile Release
 
-- Android app version: `1.0.8` (`versionCode 9`)
-- Mobile package version: `0.3.7`
+- Android app version: `1.0.9` (`versionCode 10`)
+- Mobile package version: `0.3.8`
 - Includes:
-  - fixed Android microphone permission handling
-  - saved server selection that is not auto-overwritten
-  - per-server session persistence so login survives endpoint switches
-  - hidden empty notes sections plus direct `📝 Notes` actions
-  - debug transcript timestamps disabled by default
-  - Android keep-running background preference enabled
+  - hidden note entries that have no actual content
+  - darker green app styling
+  - logged-in account profile summary with logout-only auth controls
+  - Android-style settings drill-down pages to reduce clutter
 
 ## Prerequisites
 

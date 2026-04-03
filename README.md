@@ -6,18 +6,17 @@ All hostnames, domains, and environment values shown in this README use anonymiz
 
 ## Latest Release
 
-- Current backend/API version: `v0.3.7`
-- Current Android app version: `1.0.8` (`versionCode 9`)
-- Current mobile package version: `0.3.7`
+- Current backend/API version: `v0.3.8`
+- Current Android app version: `1.0.9` (`versionCode 10`)
+- Current mobile package version: `0.3.8`
 - Release date: `2026-04-03`
 
 Recent release highlights:
-- fixed Android microphone permissions for app recording
-- saved server and login state persist per server
-- empty notes sections stay hidden until needed, with a direct `📝 Notes` action
-- debug transcript timestamps default to off
-- app is configured to keep running in the background on Android
-- refreshed Android debug APK `1.0.8` (`versionCode 9`)
+- hidden note entries that do not have any content
+- darker green visual styling across the app
+- logged-in account settings collapse to profile info plus logout
+- Android-style settings pages reduce clutter with drill-down sections
+- refreshed Android debug APK `1.0.9` (`versionCode 10`)
 
 ## Vision
 
