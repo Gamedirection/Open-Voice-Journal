@@ -57,6 +57,7 @@ const TIME_ZONE_KEY = "ovj_time_zone";
 const DEAD_AIR_THRESHOLD_KEY = "ovj_dead_air_threshold_seconds";
 const PLAYBACK_META_KEY_PREFIX = "ovj_playback_meta_v1_";
 const AUTH_TOKEN_KEY = "ovj_auth_token";
+const AUTH_TOKEN_MAP_KEY = "ovj_auth_tokens_by_server";
 const LOCAL_NOTES_KEY = "ovj_local_notes_v1";
 const RECORD_NOTE_DRAFT_KEY = "ovj_record_note_draft_v1";
 
@@ -71,7 +72,7 @@ liveCaptionsEnabled = liveCaptionsEnabled === null ? true : liveCaptionsEnabled 
 let gpsLocationEnabled = localStorage.getItem(GPS_LOCATION_KEY);
 gpsLocationEnabled = gpsLocationEnabled === null ? false : gpsLocationEnabled === "true";
 let debugTranscriptTimestampsEnabled = localStorage.getItem(DEBUG_TRANSCRIPT_TIMESTAMPS_KEY);
-debugTranscriptTimestampsEnabled = debugTranscriptTimestampsEnabled === null ? true : debugTranscriptTimestampsEnabled === "true";
+debugTranscriptTimestampsEnabled = debugTranscriptTimestampsEnabled === null ? false : debugTranscriptTimestampsEnabled === "true";
 
 const apiBaseInputEl = document.getElementById("apiBaseInput");
 const saveApiBaseBtn = document.getElementById("saveApiBase");
@@ -243,6 +244,66 @@ let recordSessionNoteDraft = readRecordSessionNoteDraft();
 const CLOUD_PAGE_SIZE = 25;
 const SCROLL_LOAD_THRESHOLD_PX = 1000;
 const nativeFetch = window.fetch.bind(window);
+
+function getAuthStorageServerKey(base = API_BASE) {
+  return normalizeBaseUrl(String(base || ""));
+}
+
+function readAuthTokenMap() {
+  try {
+    const raw = localStorage.getItem(AUTH_TOKEN_MAP_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch (_error) {
+    return {};
+  }
+}
+
+function writeAuthTokenMap(tokenMap) {
+  localStorage.setItem(AUTH_TOKEN_MAP_KEY, JSON.stringify(tokenMap && typeof tokenMap === "object" ? tokenMap : {}));
+}
+
+function getStoredAuthTokenForBase(base = API_BASE) {
+  const normalizedBase = getAuthStorageServerKey(base);
+  if (!normalizedBase) return "";
+  const tokenMap = readAuthTokenMap();
+  const scopedToken = String(tokenMap[normalizedBase] || "").trim();
+  if (scopedToken) return scopedToken;
+  return normalizedBase === getAuthStorageServerKey(API_BASE) ? String(localStorage.getItem(AUTH_TOKEN_KEY) || "") : "";
+}
+
+function syncLegacyAuthTokenStorage(token = "") {
+  const normalized = String(token || "").trim();
+  if (normalized) {
+    localStorage.setItem(AUTH_TOKEN_KEY, normalized);
+  } else {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+  }
+}
+
+function persistAuthTokenForBase(base, token) {
+  const normalizedBase = getAuthStorageServerKey(base);
+  if (!normalizedBase) return;
+  const tokenMap = readAuthTokenMap();
+  const normalizedToken = String(token || "").trim();
+  if (normalizedToken) {
+    tokenMap[normalizedBase] = normalizedToken;
+  } else {
+    delete tokenMap[normalizedBase];
+  }
+  writeAuthTokenMap(tokenMap);
+  if (normalizedBase === getAuthStorageServerKey(API_BASE)) {
+    syncLegacyAuthTokenStorage(normalizedToken);
+  }
+}
+
+function loadPersistedAuthTokenForCurrentServer() {
+  authToken = getStoredAuthTokenForBase(API_BASE);
+  syncLegacyAuthTokenStorage(authToken);
+}
+
+loadPersistedAuthTokenForCurrentServer();
 
 function shouldAttachAuth(url) {
   const target = normalizeRequestUrl(String(url || ""));
@@ -436,11 +497,7 @@ function setAuthState(token, user) {
     cloudHasMore = false;
     notesCache.clear();
   }
-  if (authToken) {
-    localStorage.setItem(AUTH_TOKEN_KEY, authToken);
-  } else {
-    localStorage.removeItem(AUTH_TOKEN_KEY);
-  }
+  persistAuthTokenForBase(API_BASE, authToken);
   if (authStatusEl) {
     if (authUser) {
       authStatusEl.textContent = `Logged in as ${authUser.email} (${authUser.role})`;
@@ -1333,6 +1390,11 @@ function renderStandaloneNotes() {
 
 function buildRecordingNotesSection(recording, sourceKind = "cloud") {
   const uiState = getRecordingUiState(recording.id);
+  const notes = getMergedNotesForRecording(recording.id);
+  const noteDraft = uiState.noteDraft;
+  if (!notes.length && !noteDraft && !uiState.showNotes) {
+    return null;
+  }
   const section = document.createElement("div");
   section.className = "recording-summary";
   const header = document.createElement("div");
@@ -1349,7 +1411,6 @@ function buildRecordingNotesSection(recording, sourceKind = "cloud") {
   const body = document.createElement("div");
   body.hidden = !expanded;
   body.className = "recording-notes";
-  const notes = getMergedNotesForRecording(recording.id);
 
   newBtn.addEventListener("click", () => {
     updateRecordingUiState(recording.id, {
@@ -1369,7 +1430,6 @@ function buildRecordingNotesSection(recording, sourceKind = "cloud") {
     loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
   });
 
-  const noteDraft = uiState.noteDraft;
   if (noteDraft) {
     const editorWrap = document.createElement("div");
     editorWrap.className = "note-composer";
@@ -1444,7 +1504,7 @@ function buildRecordingNotesSection(recording, sourceKind = "cloud") {
       }
     });
     cancelBtn.addEventListener("click", () => {
-      updateRecordingUiState(recording.id, { noteDraft: null });
+      updateRecordingUiState(recording.id, { noteDraft: null, showNotes: notes.length > 0 });
       loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
     });
     toolbar.appendChild(stampBtn);
@@ -2122,8 +2182,11 @@ function setApiBase(value) {
   API_BASE = normalized;
   lastHealthSummary = "Saved. Checking server health...";
   localStorage.setItem(SAVED_API_KEY, API_BASE);
+  loadPersistedAuthTokenForCurrentServer();
+  setAuthState(authToken, null);
   renderApiBase();
   checkHealth();
+  refreshAuthMe(true);
   loadVersion();
   loadRecordings();
   loadBackups();
@@ -2279,7 +2342,14 @@ function collectApiCandidates() {
   return Array.from(new Set(candidates.map((value) => normalizeBaseUrl(String(value || ""))).filter(Boolean)));
 }
 
+function hasExplicitSavedApiBase() {
+  return Boolean(normalizeBaseUrl(String(localStorage.getItem(SAVED_API_KEY) || "")));
+}
+
 async function ensureReachableApiBase() {
+  if (hasExplicitSavedApiBase()) {
+    return true;
+  }
   const candidates = collectApiCandidates();
   for (const candidate of candidates) {
     try {
@@ -2287,6 +2357,8 @@ async function ensureReachableApiBase() {
       if (!response.ok) continue;
       API_BASE = candidate;
       localStorage.setItem(SAVED_API_KEY, API_BASE);
+      loadPersistedAuthTokenForCurrentServer();
+      setAuthState(authToken, null);
       renderApiBase();
       return true;
     } catch (_error) {
@@ -2486,6 +2558,23 @@ async function loadBackups() {
 
       const actions = document.createElement("div");
       actions.className = "recording-actions";
+
+      const notesBtn = document.createElement("button");
+      notesBtn.type = "button";
+      notesBtn.textContent = "\uD83D\uDCDD Notes";
+      notesBtn.addEventListener("click", () => {
+        updateRecordingUiState(recording.id, {
+          showNotes: true,
+          noteDraft: {
+            noteId: "",
+            title: `${recording.title} note`,
+            markdown: "",
+            localOnly: true
+          }
+        });
+        loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
+      });
+      actions.appendChild(notesBtn);
 
       const downloadBtn = document.createElement("button");
       downloadBtn.type = "button";
@@ -2901,7 +2990,8 @@ async function loadRecordings(options = {}) {
         item.appendChild(createPlaybackSection(recording.id, localLoader));
         preloadPlaybackForRecording(recording.id);
       }
-      item.appendChild(buildRecordingNotesSection(recording, "local"));
+      const notesSection = buildRecordingNotesSection(recording, "local");
+      if (notesSection) item.appendChild(notesSection);
       if (recording.uploadStatus === "uploading") {
         item.appendChild(buildLoadingBar("Uploading..."));
       }
@@ -2931,6 +3021,23 @@ async function loadRecordings(options = {}) {
       const actions = document.createElement("div");
       actions.className = "recording-actions";
       actions.appendChild(badge);
+
+      const notesBtn = document.createElement("button");
+      notesBtn.type = "button";
+      notesBtn.textContent = "\uD83D\uDCDD Notes";
+      notesBtn.addEventListener("click", () => {
+        updateRecordingUiState(recording.id, {
+          showNotes: true,
+          noteDraft: {
+            noteId: "",
+            title: `${recording.title} note`,
+            markdown: "",
+            localOnly: !authUser
+          }
+        });
+        loadRecordings({ refreshCloud: false, silent: true, preserveScroll: true });
+      });
+      actions.appendChild(notesBtn);
 
       if (recording.metadata?.audio?.fileName) {
         const downloadBtn = document.createElement("button");
@@ -3575,7 +3682,8 @@ async function loadRecordings(options = {}) {
         item.appendChild(buildLoadingBar(uiState.activeTaskLabel || "Queued for processing", detail));
       }
       item.appendChild(transcriptSection);
-      item.appendChild(buildRecordingNotesSection(recording, "cloud"));
+      const notesSection = buildRecordingNotesSection(recording, "cloud");
+      if (notesSection) item.appendChild(notesSection);
       item.appendChild(summarySection);
       listTarget.appendChild(item);
     });
@@ -5260,7 +5368,7 @@ async function refreshAuthMe(silent = false) {
       if (!silent) {
         if (authStatusEl) authStatusEl.textContent = `Auth check failed: ${message || response.status}`;
       }
-      setAuthState(authToken, null);
+      setAuthState(response.status === 401 || response.status === 403 ? "" : authToken, null);
       if (authStatusEl && (response.status === 401 || response.status === 403)) {
         authStatusEl.textContent = "Saved session found, but this server did not accept it. Sign in again if needed.";
       }
