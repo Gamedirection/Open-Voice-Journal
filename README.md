@@ -6,17 +6,18 @@ All hostnames, domains, and environment values shown in this README use anonymiz
 
 ## Latest Release
 
-- Current backend/API version: `v0.3.6`
-- Current Android app version: `1.0.7` (`versionCode 8`)
-- Current mobile package version: `0.3.6`
-- Release date: `2026-03-29`
+- Current backend/API version: `v0.3.7`
+- Current Android app version: `1.0.8` (`versionCode 9`)
+- Current mobile package version: `0.3.7`
+- Release date: `2026-04-03`
 
 Recent release highlights:
-- more accurate transcript word-to-audio highlighting in both plain and Person modes
-- standalone and recording-linked Markdown notes with timestamp links and `.md` download
-- preview-first note editor with basic Markdown formatting tools
-- notes draft carryover from live recording into uploaded cloud recordings
-- refreshed Android debug APK `1.0.7` (`versionCode 8`)
+- fixed Android microphone permissions for app recording
+- saved server and login state persist per server
+- empty notes sections stay hidden until needed, with a direct `📝 Notes` action
+- debug transcript timestamps default to off
+- app is configured to keep running in the background on Android
+- refreshed Android debug APK `1.0.8` (`versionCode 9`)
 
 ## Vision
 

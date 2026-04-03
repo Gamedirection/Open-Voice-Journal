@@ -2,6 +2,16 @@
 
 All notable changes to Open-Voice-Journal will be documented in this file.
 
+## v0.3.7 - 2026-04-03
+
+- Fixed Android microphone permission flow by adding the missing audio settings permission required by the Capacitor WebView bridge.
+- Kept the selected server saved on-device without auto-overwriting it from fallback API discovery.
+- Persisted login sessions per saved server so switching endpoints does not force re-entering credentials.
+- Disabled debug transcript timestamps by default for cleaner recording and transcript views.
+- Hid per-recording notes sections when there are no notes or open drafts, and added a `📝 Notes` action button directly in recording action rows.
+- Enabled Android `KeepRunning` so the app can continue running when backgrounded.
+- Bumped mobile/app release metadata to mobile package `0.3.7` and Android app `1.0.8` (`versionCode 9`).
+
 ## v0.3.6 - 2026-03-29
 
 - Reworked transcript word highlighting to use a single canonical timed-word timeline so matching stays closer to the spoken audio in both plain and Person modes.
