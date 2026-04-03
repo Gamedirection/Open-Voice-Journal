@@ -2,6 +2,14 @@
 
 All notable changes to Open-Voice-Journal will be documented in this file.
 
+## v0.3.9 - 2026-04-03
+
+- Shrunk the main Notes add action down to a compact `+` button and matched per-recording note creation to the same compact affordance.
+- Hid recording notes content completely while collapsed so the Notes section behaves like Transcript instead of leaking note previews when closed.
+- Fixed the Android-style Settings navigation so selecting a section actually drills into that page, and added top-level settings search.
+- Clarified live captions behavior in the Android app by surfacing that the current APK does not yet have native caption support instead of showing a broken browser-only toggle flow.
+- Bumped mobile/app release metadata to mobile package `0.3.9` and Android app `1.0.10` (`versionCode 11`).
+
 ## v0.3.8 - 2026-04-03
 
 - Hid notes that do not contain any actual content so empty note cards no longer appear in recording and notes views.

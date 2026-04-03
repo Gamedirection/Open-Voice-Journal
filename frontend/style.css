@@ -7,6 +7,10 @@
   --border: #d9ddd2;
 }
 
+[hidden] {
+  display: none !important;
+}
+
 * { box-sizing: border-box; }
 
 body {
@@ -83,6 +87,7 @@ body {
 .settings-menu {
   display: grid;
   gap: 10px;
+  margin-top: 10px;
 }
 
 .settings-nav-item {
@@ -120,6 +125,10 @@ body {
 .settings-nav-copy small {
   color: var(--muted);
   font-size: 0.8rem;
+}
+
+.settings-nav-item[hidden] {
+  display: none !important;
 }
 
 .settings-detail-card {
@@ -751,6 +760,16 @@ body[data-theme="dark"] .icon-action-btn {
   border-radius: 999px;
   margin-left: auto;
   font-size: 1.05rem;
+  line-height: 1;
+}
+
+.compact-add-button {
+  width: auto;
+  min-width: 34px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  margin-left: auto;
+  font-size: 1.1rem;
   line-height: 1;
 }
 

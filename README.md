@@ -6,17 +6,17 @@ All hostnames, domains, and environment values shown in this README use anonymiz
 
 ## Latest Release
 
-- Current backend/API version: `v0.3.8`
-- Current Android app version: `1.0.9` (`versionCode 10`)
-- Current mobile package version: `0.3.8`
+- Current backend/API version: `v0.3.9`
+- Current Android app version: `1.0.10` (`versionCode 11`)
+- Current mobile package version: `0.3.9`
 - Release date: `2026-04-03`
 
 Recent release highlights:
-- hidden note entries that do not have any content
-- darker green visual styling across the app
-- logged-in account settings collapse to profile info plus logout
-- Android-style settings pages reduce clutter with drill-down sections
-- refreshed Android debug APK `1.0.9` (`versionCode 10`)
+- notes now use compact `+` add actions
+- collapsed notes stay fully hidden until expanded
+- settings drill-down navigation now opens the selected page and includes search
+- Android app now clearly reports that live captions are not available natively yet
+- refreshed Android debug APK `1.0.10` (`versionCode 11`)
 
 ## Vision
 

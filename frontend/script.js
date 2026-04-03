@@ -151,6 +151,7 @@ const saveStandaloneNoteBtn = document.getElementById("saveStandaloneNote");
 const cancelStandaloneNoteBtn = document.getElementById("cancelStandaloneNote");
 const standaloneNoteStatusEl = document.getElementById("standaloneNoteStatus");
 const standaloneNotesListEl = document.getElementById("standaloneNotesList");
+const settingsSearchInputEl = document.getElementById("settingsSearchInput");
 const tabButtons = Array.from(document.querySelectorAll(".tab-button"));
 const tabPanels = Array.from(document.querySelectorAll(".tab-panel"));
 const visualizerCanvas = document.getElementById("recordVisualizer");
@@ -200,6 +201,7 @@ const generalSettingsCardEl = document.getElementById("generalSettingsCard");
 const automationCardEl = document.getElementById("automationCard");
 const docsCardEl = document.getElementById("docsCard");
 const settingsHomePageEl = document.getElementById("settingsHomePage");
+const settingsDetailGridEl = document.getElementById("settingsDetailGrid");
 const settingsAdminEntryEl = document.getElementById("settingsAdminEntry");
 const settingsPageEls = Array.from(document.querySelectorAll("[data-settings-page]"));
 const settingsNavButtons = Array.from(document.querySelectorAll("[data-settings-target]"));
@@ -246,6 +248,7 @@ let cloudLoading = false;
 let cloudQuery = "";
 let recordingsScrollTicking = false;
 let currentSettingsPage = "home";
+let settingsSearchQuery = "";
 let authToken = localStorage.getItem(AUTH_TOKEN_KEY) || "";
 let authUser = null;
 let lastHealthSummary = "Not checked yet.";
@@ -580,9 +583,11 @@ function renderSettingsProfile() {
 function renderSettingsPage() {
   const activePage = currentSettingsPage || "home";
   if (settingsHomePageEl) settingsHomePageEl.hidden = activePage !== "home";
+  if (settingsDetailGridEl) settingsDetailGridEl.hidden = activePage === "home";
   settingsPageEls.forEach((element) => {
     element.hidden = element.dataset.settingsPage !== activePage;
   });
+  filterSettingsMenu();
 }
 
 function setSettingsPage(pageName = "home") {
@@ -593,6 +598,19 @@ function setSettingsPage(pageName = "home") {
     currentSettingsPage = normalized;
   }
   renderSettingsPage();
+}
+
+function normalizeSearchText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function filterSettingsMenu() {
+  const query = normalizeSearchText(settingsSearchQuery);
+  settingsNavButtons.forEach((button) => {
+    const matches = !query || normalizeSearchText(button.textContent).includes(query);
+    const adminHidden = button.id === "settingsAdminEntry" && !isAdminSession();
+    button.hidden = adminHidden || !matches;
+  });
 }
 
 function formatBytes(value) {
@@ -1462,8 +1480,10 @@ function buildRecordingNotesSection(recording, sourceKind = "cloud") {
   toggle.textContent = `${expanded ? "\u25BE" : "\u25B8"} Notes`;
   const newBtn = document.createElement("button");
   newBtn.type = "button";
-  newBtn.textContent = "New Note";
+  newBtn.textContent = "+";
   newBtn.className = "section-refresh-btn";
+  newBtn.title = "New note";
+  newBtn.setAttribute("aria-label", "New note");
   const body = document.createElement("div");
   body.hidden = !expanded;
   body.className = "recording-notes";
@@ -3808,6 +3828,14 @@ function isLiveCaptionsSupported() {
   return Boolean(getSpeechRecognitionCtor());
 }
 
+function getLiveCaptionsUnavailableReason() {
+  if (isLiveCaptionsSupported()) return "";
+  if (window.Capacitor) {
+    return "Live captions are not available in the Android app yet.";
+  }
+  return "Live captions unavailable in this browser.";
+}
+
 function setLiveCaptionsStatus(message) {
   if (liveCaptionsStatusEl) {
     liveCaptionsStatusEl.textContent = message;
@@ -3816,11 +3844,28 @@ function setLiveCaptionsStatus(message) {
 
 function renderLiveCaptionsText() {
   if (!liveCaptionsTextEl) return;
+  const unavailableReason = getLiveCaptionsUnavailableReason();
+  if (unavailableReason) {
+    liveCaptionsTextEl.textContent = unavailableReason;
+    return;
+  }
   const finalText = String(liveCaptionFinalText || "").trim();
   const interimText = String(liveCaptionInterimText || "").trim();
   const joined = [finalText, interimText].filter(Boolean).join(finalText && interimText ? " " : "");
   liveCaptionsTextEl.textContent = joined || "Captions will appear here while recording.";
   liveCaptionsTextEl.scrollTop = liveCaptionsTextEl.scrollHeight;
+}
+
+function refreshLiveCaptionsAvailabilityUi() {
+  const reason = getLiveCaptionsUnavailableReason();
+  const supported = !reason;
+  if (liveCaptionsToggleEl) {
+    liveCaptionsToggleEl.disabled = !supported;
+    if (!supported) liveCaptionsToggleEl.checked = false;
+  }
+  setLiveCaptionsStatus(supported ? "Live captions: ready" : reason);
+  renderLiveCaptionsText();
+  return supported;
 }
 
 function resetLiveCaptions() {
@@ -3871,11 +3916,13 @@ function startLiveCaptions() {
     setLiveCaptionsStatus("Live captions disabled in settings.");
     return;
   }
-  const RecognitionCtor = getSpeechRecognitionCtor();
-  if (!RecognitionCtor) {
-    setLiveCaptionsStatus("Live captions unavailable in this browser.");
+  const unavailableReason = getLiveCaptionsUnavailableReason();
+  if (unavailableReason) {
+    setLiveCaptionsStatus(unavailableReason);
+    renderLiveCaptionsText();
     return;
   }
+  const RecognitionCtor = getSpeechRecognitionCtor();
   if (!mediaRecorder || mediaRecorder.state === "inactive") {
     return;
   }
@@ -5943,6 +5990,7 @@ if (uploadToggleEl) {
 
 if (liveCaptionsToggleEl) {
   liveCaptionsToggleEl.checked = Boolean(liveCaptionsEnabled);
+  refreshLiveCaptionsAvailabilityUi();
   liveCaptionsToggleEl.addEventListener("change", (event) => {
     liveCaptionsEnabled = Boolean(event.target.checked);
     localStorage.setItem(LIVE_CAPTIONS_KEY, String(liveCaptionsEnabled));
@@ -5953,12 +6001,12 @@ if (liveCaptionsToggleEl) {
       liveCaptionsPanelEl.hidden = !liveCaptionsEnabled;
     }
     if (liveCaptionsEnabled) {
-      const captionsSupported = isLiveCaptionsSupported();
-      setLiveCaptionsStatus(captionsSupported ? "Live captions: ready" : "Live captions unavailable in this browser.");
-      renderLiveCaptionsText();
-      if (mediaRecorder && mediaRecorder.state === "recording") {
+      const captionsSupported = refreshLiveCaptionsAvailabilityUi();
+      if (mediaRecorder && mediaRecorder.state === "recording" && captionsSupported) {
         startLiveCaptions();
       }
+    } else {
+      refreshLiveCaptionsAvailabilityUi();
     }
   });
 }
@@ -5983,7 +6031,6 @@ if (debugTranscriptTimestampsToggleEl) {
 
 if (recordStartBtn && recordStopBtn) {
   const supported = Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
-  const captionsSupported = isLiveCaptionsSupported();
   setRecordingUiState({
     message: supported ? "Ready to record." : "Audio recording is not supported in this browser.",
     startDisabled: !supported,
@@ -5994,12 +6041,7 @@ if (recordStartBtn && recordStopBtn) {
     liveCaptionsPanelEl.hidden = !liveCaptionsEnabled;
   }
   if (liveCaptionsEnabled) {
-    if (captionsSupported) {
-      setLiveCaptionsStatus("Live captions: ready");
-    } else {
-      setLiveCaptionsStatus("Live captions unavailable in this browser.");
-    }
-    renderLiveCaptionsText();
+    refreshLiveCaptionsAvailabilityUi();
   }
   recordStartBtn.addEventListener("click", toggleRecordPause);
   recordStopBtn.addEventListener("click", stopRecording);
@@ -6242,6 +6284,13 @@ settingsNavButtons.forEach((btn) => {
     setSettingsPage(btn.dataset.settingsTarget || "home");
   });
 });
+
+if (settingsSearchInputEl) {
+  settingsSearchInputEl.addEventListener("input", (event) => {
+    settingsSearchQuery = String(event.target.value || "");
+    filterSettingsMenu();
+  });
+}
 
 settingsBackButtons.forEach((btn) => {
   btn.addEventListener("click", () => {

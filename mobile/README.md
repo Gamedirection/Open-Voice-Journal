@@ -4,13 +4,13 @@ This folder wraps the `../frontend` web app into an Android app.
 
 ## Current Mobile Release
 
-- Android app version: `1.0.9` (`versionCode 10`)
-- Mobile package version: `0.3.8`
+- Android app version: `1.0.10` (`versionCode 11`)
+- Mobile package version: `0.3.9`
 - Includes:
-  - hidden note entries that have no actual content
-  - darker green app styling
-  - logged-in account profile summary with logout-only auth controls
-  - Android-style settings drill-down pages to reduce clutter
+  - compact `+` add-note actions
+  - fully hidden collapsed recording notes
+  - fixed settings drill-down pages plus top-level settings search
+  - explicit Android app live-captions unavailable messaging until native support is added
 
 ## Prerequisites
 
