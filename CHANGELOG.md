@@ -2,6 +2,12 @@
 
 All notable changes to Open-Voice-Journal will be documented in this file.
 
+## v0.3.10 - 2026-04-03
+
+- Hid `CC` caption-export buttons in the Android app so mobile users no longer see a non-working caption action.
+- Improved fallback person detection so transcripts without provider diarization segments can still split into multiple heuristic speakers instead of collapsing to a single person.
+- Bumped mobile/app release metadata to mobile package `0.3.10` and Android app `1.0.11` (`versionCode 12`).
+
 ## v0.3.9 - 2026-04-03
 
 - Shrunk the main Notes add action down to a compact `+` button and matched per-recording note creation to the same compact affordance.

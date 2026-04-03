@@ -6,17 +6,15 @@ All hostnames, domains, and environment values shown in this README use anonymiz
 
 ## Latest Release
 
-- Current backend/API version: `v0.3.9`
-- Current Android app version: `1.0.10` (`versionCode 11`)
-- Current mobile package version: `0.3.9`
+- Current backend/API version: `v0.3.10`
+- Current Android app version: `1.0.11` (`versionCode 12`)
+- Current mobile package version: `0.3.10`
 - Release date: `2026-04-03`
 
 Recent release highlights:
-- notes now use compact `+` add actions
-- collapsed notes stay fully hidden until expanded
-- settings drill-down navigation now opens the selected page and includes search
-- Android app now clearly reports that live captions are not available natively yet
-- refreshed Android debug APK `1.0.10` (`versionCode 11`)
+- Android app hides the non-working `CC` caption action
+- fallback person detection can split plain transcripts into multiple heuristic speakers
+- refreshed Android debug APK `1.0.11` (`versionCode 12`)
 
 ## Vision
 

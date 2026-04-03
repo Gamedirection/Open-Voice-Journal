@@ -96,6 +96,22 @@ function buildHeuristicTurns(segments = []) {
   return turns;
 }
 
+function splitTranscriptIntoSentenceSegments(text = "") {
+  const raw = String(text || "").trim();
+  if (!raw) return [];
+  const matches = raw.match(/[^.!?\n]+(?:[.!?]+|$)/g) || [];
+  return matches
+    .map((segment) => String(segment || "").trim())
+    .filter(Boolean)
+    .map((segment, index) => ({
+      index,
+      text: segment,
+      start: null,
+      end: null,
+      speakerId: null
+    }));
+}
+
 function assignHeuristicSpeakers(turns = []) {
   if (!turns.length) return [];
   let lastSpeakerIndex = 0;
@@ -142,6 +158,20 @@ function buildSpeakerMetadata(text, providerSegments = [], existingLabels = {}) 
 
   const fallbackText = String(text || "").trim();
   if (!fallbackText) return null;
+  const fallbackSegments = assignHeuristicSpeakers(splitTranscriptIntoSentenceSegments(fallbackText));
+  if (fallbackSegments.length > 1) {
+    const speakerIds = Array.from(new Set(fallbackSegments.map((segment) => segment.speakerId).filter(Boolean)));
+    return {
+      labels: createLabelsForSpeakerIds(speakerIds, existingLabels),
+      segments: fallbackSegments.map((segment, index) => ({
+        index,
+        speakerId: segment.speakerId || "speaker_1",
+        text: segment.text,
+        start: Number.isFinite(segment.start) ? segment.start : null,
+        end: Number.isFinite(segment.end) ? segment.end : null
+      }))
+    };
+  }
   return {
     labels: createLabelsForSpeakerIds(["speaker_1"], existingLabels),
     segments: [

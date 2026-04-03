@@ -39,6 +39,8 @@ function normalizeRequestUrl(url) {
   return raw;
 }
 
+const IS_CAPACITOR = Boolean(window.Capacitor);
+
 const SAVED_API_KEY = "ovj_api_base";
 const THEME_KEY = "ovj_theme";
 const UPLOAD_KEY = "ovj_upload_enabled";
@@ -3005,34 +3007,36 @@ async function loadRecordings(options = {}) {
       });
       actions.appendChild(removeDeadAirLocalBtn);
 
-      const exportCcLocalBtn = document.createElement("button");
-      exportCcLocalBtn.type = "button";
-      exportCcLocalBtn.textContent = "CC";
-      exportCcLocalBtn.className = "icon-action-btn";
-      exportCcLocalBtn.title = "Download captions (.srt)";
-      exportCcLocalBtn.setAttribute("aria-label", "Download captions");
-      exportCcLocalBtn.addEventListener("click", async () => {
-        const anchors = (Array.isArray(recording.captionAnchors) ? recording.captionAnchors : [])
-          .map((entry) => ({ text: String(entry?.text || "").trim(), at: Number(entry?.at) }))
-          .filter((entry) => entry.text && Number.isFinite(entry.at) && entry.at >= 0);
-        if (!anchors.length) {
-          const synthesized = getCaptionAnchorsFromSentenceAnchors(recording);
-          if (!synthesized.length) {
-            alert("No CC data is available for this recording yet.");
+      if (!IS_CAPACITOR) {
+        const exportCcLocalBtn = document.createElement("button");
+        exportCcLocalBtn.type = "button";
+        exportCcLocalBtn.textContent = "CC";
+        exportCcLocalBtn.className = "icon-action-btn";
+        exportCcLocalBtn.title = "Download captions (.srt)";
+        exportCcLocalBtn.setAttribute("aria-label", "Download captions");
+        exportCcLocalBtn.addEventListener("click", async () => {
+          const anchors = (Array.isArray(recording.captionAnchors) ? recording.captionAnchors : [])
+            .map((entry) => ({ text: String(entry?.text || "").trim(), at: Number(entry?.at) }))
+            .filter((entry) => entry.text && Number.isFinite(entry.at) && entry.at >= 0);
+          if (!anchors.length) {
+            const synthesized = getCaptionAnchorsFromSentenceAnchors(recording);
+            if (!synthesized.length) {
+              alert("No CC data is available for this recording yet.");
+              return;
+            }
+            const srtFallback = buildSrtFromAnchors(synthesized, recording.durationSeconds || 0);
+            downloadTextFile(`${sanitizeFilename(recording.title)}-captions.srt`, srtFallback, "application/x-subrip;charset=utf-8");
             return;
           }
-          const srtFallback = buildSrtFromAnchors(synthesized, recording.durationSeconds || 0);
-          downloadTextFile(`${sanitizeFilename(recording.title)}-captions.srt`, srtFallback, "application/x-subrip;charset=utf-8");
-          return;
-        }
-        const srt = buildSrtFromAnchors(anchors, recording.durationSeconds || 0);
-        if (!srt) {
-          alert("Unable to build captions file.");
-          return;
-        }
-        downloadTextFile(`${sanitizeFilename(recording.title)}-captions.srt`, srt, "application/x-subrip;charset=utf-8");
-      });
-      actions.appendChild(exportCcLocalBtn);
+          const srt = buildSrtFromAnchors(anchors, recording.durationSeconds || 0);
+          if (!srt) {
+            alert("Unable to build captions file.");
+            return;
+          }
+          downloadTextFile(`${sanitizeFilename(recording.title)}-captions.srt`, srt, "application/x-subrip;charset=utf-8");
+        });
+        actions.appendChild(exportCcLocalBtn);
+      }
 
       const deleteLocalBtn = document.createElement("button");
       deleteLocalBtn.type = "button";
@@ -3144,27 +3148,29 @@ async function loadRecordings(options = {}) {
         });
         actions.appendChild(downloadBtn);
 
-        const downloadCcBtn = document.createElement("button");
-        downloadCcBtn.type = "button";
-        downloadCcBtn.textContent = "CC";
-        downloadCcBtn.className = "icon-action-btn";
-        downloadCcBtn.title = "Download captions (.srt)";
-        downloadCcBtn.setAttribute("aria-label", "Download captions");
-        downloadCcBtn.addEventListener("click", async () => {
-          const anchors = await resolveCaptionAnchorsForExport(recording);
-          if (!anchors.length) {
-            alert("No CC data is available for this recording yet.");
-            return;
-          }
-          const durationHint = getRecordingDurationHint(recording);
-          const srt = buildSrtFromAnchors(anchors, durationHint);
-          if (!srt) {
-            alert("Unable to build captions file.");
-            return;
-          }
-          downloadTextFile(`${sanitizeFilename(recording.title)}-captions.srt`, srt, "application/x-subrip;charset=utf-8");
-        });
-        actions.appendChild(downloadCcBtn);
+        if (!IS_CAPACITOR) {
+          const downloadCcBtn = document.createElement("button");
+          downloadCcBtn.type = "button";
+          downloadCcBtn.textContent = "CC";
+          downloadCcBtn.className = "icon-action-btn";
+          downloadCcBtn.title = "Download captions (.srt)";
+          downloadCcBtn.setAttribute("aria-label", "Download captions");
+          downloadCcBtn.addEventListener("click", async () => {
+            const anchors = await resolveCaptionAnchorsForExport(recording);
+            if (!anchors.length) {
+              alert("No CC data is available for this recording yet.");
+              return;
+            }
+            const durationHint = getRecordingDurationHint(recording);
+            const srt = buildSrtFromAnchors(anchors, durationHint);
+            if (!srt) {
+              alert("Unable to build captions file.");
+              return;
+            }
+            downloadTextFile(`${sanitizeFilename(recording.title)}-captions.srt`, srt, "application/x-subrip;charset=utf-8");
+          });
+          actions.appendChild(downloadCcBtn);
+        }
       }
 
       const deleteCloudBtn = document.createElement("button");
